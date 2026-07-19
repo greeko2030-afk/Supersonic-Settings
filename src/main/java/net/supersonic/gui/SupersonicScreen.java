@@ -2,19 +2,20 @@ package net.supersonic.gui;
 
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
-import net.supersonic.gui.tabs.PerformanceTab;
+import net.supersonic.gui.tabs.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class SupersonicScreen extends Screen {
+    private String activeTab = "Visuals"; // Default tab
+    private final int startX = 50;
+    private final int startY = 50;
 
-    private final int UI_WIDTH = 900;
-    private final int UI_HEIGHT = 600;
-    private String activeTab = "Performance";
-    
-    private PerformanceTab performanceTab;
-    private TextFieldWidget searchBar;
+    // Tab instances
+    private VisualsTab visualsTab;
+    private ModsAddonsTab modsAddonsTab;
+    private ReplayCaptureTab replayTab;
 
     public SupersonicScreen() {
         super(Text.literal("Supersonic Settings"));
@@ -22,73 +23,53 @@ public class SupersonicScreen extends Screen {
 
     @Override
     protected void init() {
-        super.init();
+        // Initialize widgets based on the active tab
         this.clearChildren();
 
-        int startX = (this.width - UI_WIDTH) / 2;
-        int startY = (this.height - UI_HEIGHT) / 2;
-        
-        // Search Bar (Top Right)
-        this.searchBar = new TextFieldWidget(this.textRenderer, startX + 500, startY + 15, 200, 20, Text.literal("Search settings..."));
-        this.addDrawableChild(this.searchBar);
-
-        // Sidebar Buttons
-        String[] tabs = {"Gameplay", "Visuals", "Performance", "HUD & Overlay", "Audio", "Multiplayer", "Controls", "Mods & Addons", "Replay & Capture", "Supersonic AI"};
-        int btnY = startY + 70;
-        for (String tab : tabs) {
-            this.addDrawableChild(ButtonWidget.builder(Text.literal(tab), button -> {
-                this.activeTab = tab;
-                this.init(); // Reload UI
-            }).dimensions(startX + 15, btnY, 140, 25).build());
-            btnY += 30;
-        }
-
-        // Bottom Right Buttons (Apply, Reset, Done)
-        int bottomBtnY = startY + UI_HEIGHT - 40;
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Apply"), btn -> {}).dimensions(startX + 600, bottomBtnY, 80, 20).build());
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Reset"), btn -> {}).dimensions(startX + 690, bottomBtnY, 80, 20).build());
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), btn -> this.close()).dimensions(startX + 780, bottomBtnY, 80, 20).build());
-
-        // Initialize Tab Content
-        if (activeTab.equals("Performance")) {
-            this.performanceTab = new PerformanceTab(startX, startY);
-            // We pass the screen's addDrawableChild method reference to the tab so it can add its widgets
-            this.performanceTab.init(this.children());
+        if (activeTab.equals("Visuals")) {
+            this.visualsTab = new VisualsTab(startX, startY);
+            this.visualsTab.init(this.children());
+        } else if (activeTab.equals("Mods & Addons")) {
+            this.modsAddonsTab = new ModsAddonsTab(startX, startY);
+            this.modsAddonsTab.init(this.children());
+        } else if (activeTab.equals("Replay & Capture")) {
+            this.replayTab = new ReplayCaptureTab(startX, startY);
+            this.replayTab.init(this.children());
         }
     }
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        this.renderBackground(context); // Vanilla dim background
+        // Render background
+        context.fill(startX, startY, startX + 900, startY + 500, 0xFF050A10);
+        context.drawBorder(startX, startY, 900, 500, 0xFF1A3344);
 
-        int startX = (this.width - UI_WIDTH) / 2;
-        int startY = (this.height - UI_HEIGHT) / 2;
+        // Render the left sidebar
+        renderSidebar(context);
 
-        // 1. Draw Main UI Background (Dark Blue-ish gradient frame)
-        context.fill(startX, startY, startX + UI_WIDTH, startY + UI_HEIGHT, 0xEE0A111A);
-        context.drawBorder(startX, startY, UI_WIDTH, UI_HEIGHT, 0xFF00FFFF); // Cyan border
-        
-        // 2. Draw Sidebar Background
-        context.fill(startX, startY, startX + 170, startY + UI_HEIGHT, 0xAA070B11);
-
-        // 3. Draw Top Left Branding
-        context.drawTextWithShadow(this.textRenderer, "SUPERSONIC SETTINGS", startX + 20, startY + 20, 0x00FFFF);
-        context.drawText(this.textRenderer, "Optimize. Accelerate. Dominate.", startX + 20, startY + 32, 0xAAAAAA, false);
-
-        // 4. Draw Bottom Left Engine Info (Supersonic Engine Active)
-        int engineY = startY + UI_HEIGHT - 100;
-        context.fill(startX + 10, engineY, startX + 160, engineY + 90, 0x44005555);
-        context.drawText(this.textRenderer, "Supersonic Engine", startX + 20, engineY + 10, 0xFFFFFF, false);
-        context.drawText(this.textRenderer, "Active", startX + 115, engineY + 10, 0x00FF00, false);
-        context.drawText(this.textRenderer, "D3D12 Translation: ON", startX + 20, engineY + 30, 0xAAAAAA, false);
-        context.drawText(this.textRenderer, "AIFI Frame Interpolation: ON", startX + 20, engineY + 45, 0xAAAAAA, false);
-        context.drawText(this.textRenderer, "Nvidium+: ENABLED", startX + 20, engineY + 60, 0xAAAAAA, false);
-
-        // 5. Render Active Tab Content
-        if (activeTab.equals("Performance") && this.performanceTab != null) {
-            this.performanceTab.render(context, mouseX, mouseY, delta);
-        }
+        // Render the active tab
+        if (activeTab.equals("Visuals") && visualsTab != null) visualsTab.render(context, mouseX, mouseY, delta);
+        if (activeTab.equals("Mods & Addons") && modsAddonsTab != null) modsAddonsTab.render(context, mouseX, mouseY, delta);
+        if (activeTab.equals("Replay & Capture") && replayTab != null) replayTab.render(context, mouseX, mouseY, delta);
 
         super.render(context, mouseX, mouseY, delta);
     }
-}
+
+    private void renderSidebar(DrawContext context) {
+        // The left-side buttons and logo will be rendered here
+        context.fill(startX, startY, startX + 160, startY + 500, 0xFF0A111A);
+        context.drawText(context.textRenderer, "SUPERSONIC", startX + 20, startY + 20, 0x00FFFF, true);
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // When a menu button is clicked, activeTab will change and init() will be called
+        // Example: if (isMouseOver("Visuals", mouseX, mouseY)) { activeTab = "Visuals"; init(); }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean shouldPause() {
+        return false;
+    }
+                     }
