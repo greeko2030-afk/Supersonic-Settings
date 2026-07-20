@@ -68,7 +68,7 @@ jobs:
         # 3. Generate build.gradle
         with open('build.gradle', 'w', encoding='utf-8') as f:
             f.write("""plugins {
-            id 'fabric-loom' version '1.6.13'
+            id 'fabric-loom' version '1.6-SNAPSHOT'
             id 'maven-publish'
         }
 
