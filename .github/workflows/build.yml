@@ -27,10 +27,11 @@ jobs:
       with:
         gradle-version: '8.8'
 
-    - name: Ensure All Required Mod Files Exist
+    - name: Force Overwrite All Mod Files
       run: |
-        echo "Validating and setting up project environment..."
+        echo "Forcefully overwriting project files to prevent NullPointerException..."
 
+        # 1. Force overwrite settings.gradle
         cat << 'EOF' > settings.gradle
         pluginManagement {
             repositories {
@@ -45,6 +46,7 @@ jobs:
         rootProject.name = "Supersonic-settings"
         EOF
 
+        # 2. Force overwrite gradle.properties
         cat << 'EOF' > gradle.properties
         org.gradle.jvmargs=-Xmx2G
         org.gradle.parallel=true
@@ -59,9 +61,8 @@ jobs:
         archives_base_name=Supersonic-settings
         EOF
 
-        if [ ! -s "build.gradle" ]; then
-          echo "build.gradle is missing or empty! Creating default build.gradle..."
-          cat << 'EOF' > build.gradle
+        # 3. Force overwrite build.gradle
+        cat << 'EOF' > build.gradle
         plugins {
             id 'fabric-loom' version '1.6-SNAPSHOT'
             id 'maven-publish'
@@ -98,12 +99,10 @@ jobs:
             targetCompatibility = JavaVersion.VERSION_17
         }
         EOF
-        fi
 
+        # 4. Force overwrite fabric.mod.json
         mkdir -p src/main/resources
-        if [ ! -s "src/main/resources/fabric.mod.json" ]; then
-          echo "fabric.mod.json is missing or empty! Generating default JSON..."
-          cat << 'EOF' > src/main/resources/fabric.mod.json
+        cat << 'EOF' > src/main/resources/fabric.mod.json
         {
           "schemaVersion": 1,
           "id": "supersonic_settings",
@@ -121,7 +120,6 @@ jobs:
           }
         }
         EOF
-        fi
 
     - name: Generate Wrapper and Build Mod
       run: |
