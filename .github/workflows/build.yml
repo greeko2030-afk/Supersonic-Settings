@@ -1,4 +1,4 @@
-name: Build Mod
+name: Build Mod (Java 21)
 
 on:
   push:
@@ -15,27 +15,34 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    - name: Set up Java 17
+    - name: Set up Java 21
       uses: actions/setup-java@v4
       with:
-        java-version: '17'
+        java-version: '21'
         distribution: 'temurin'
 
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
 
-    # If your project is inside a subfolder, change '.' to './your-folder-name'
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-      working-directory: .
+    - name: Find and Grant Executable Permission to gradlew
+      run: |
+        find . -name "gradlew" -exec chmod +x {} +
 
     - name: Build with Gradle
-      run: ./gradlew build
-      working-directory: .
+      run: |
+        GRADLEW_PATH=$(find . -name "gradlew" -print -quit)
+        if [ -n "$GRADLEW_PATH" ]; then
+          DIR=$(dirname "$GRADLEW_PATH")
+          echo "Found gradlew in $DIR. Building..."
+          cd "$DIR" && ./gradlew build
+        else
+          echo "gradlew not found! Falling back to system gradle..."
+          gradle build
+        fi
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: Mod-Build-Artifacts
-        path: '**/build/libs/'
+        path: '**/build/libs/*.jar'
         if-no-files-found: error
