@@ -45,7 +45,7 @@ jobs:
             }
         }
         rootProject.name = "Supersonic-Settings"
-        EOF
+EOF
 
         # 3. Force a rock-solid build.gradle for 1.20.1
         cat << 'EOF' > build.gradle
@@ -84,7 +84,7 @@ jobs:
             sourceCompatibility = JavaVersion.VERSION_17
             targetCompatibility = JavaVersion.VERSION_17
         }
-        EOF
+EOF
 
         # 4. Force a perfectly formatted fabric.mod.json
         mkdir -p src/main/resources
@@ -111,28 +111,28 @@ jobs:
             "java": ">=17"
           }
         }
-        EOF
+EOF
 
         # 5. Ensure the Entrypoint class exists based on your specific package structure
         mkdir -p src/main/java/net/supersonic
         if [ ! -f "src/main/java/net/supersonic/SupersonicClient.java" ]; then
           echo "Creating Client Entrypoint..."
           cat << 'EOF' > src/main/java/net/supersonic/SupersonicClient.java
-          package net.supersonic;
+        package net.supersonic;
 
-          import net.fabricmc.api.ClientModInitializer;
-          import org.slf4j.Logger;
-          import org.slf4j.LoggerFactory;
+        import net.fabricmc.api.ClientModInitializer;
+        import org.slf4j.Logger;
+        import org.slf4j.LoggerFactory;
 
-          public class SupersonicClient implements ClientModInitializer {
-              public static final Logger LOGGER = LoggerFactory.getLogger("supersonicsettings");
+        public class SupersonicClient implements ClientModInitializer {
+            public static final Logger LOGGER = LoggerFactory.getLogger("supersonicsettings");
 
-              @Override
-              public void onInitializeClient() {
-                  LOGGER.info("Supersonic Settings Mod loaded successfully!");
-              }
-          }
-          EOF
+            @Override
+            public void onInitializeClient() {
+                LOGGER.info("Supersonic Settings Mod loaded successfully!");
+            }
+        }
+EOF
         fi
 
     - name: Build Mod
