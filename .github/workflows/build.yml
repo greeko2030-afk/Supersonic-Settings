@@ -27,33 +27,39 @@ jobs:
       with:
         gradle-version: '8.8'
 
-    - name: Fix Case Sensitivity and Missing Files
+    - name: Force Overwrite Project Files
       run: |
-        echo "Checking repository files..."
+        echo "Forcing correct settings.gradle and gradle.properties to prevent NullPointerException..."
         
-        # Linux is case-sensitive. Rename Gradle.properties to gradle.properties if it exists.
-        if [ -f "Gradle.properties" ]; then
-          echo "Found uppercase Gradle.properties! Renaming to lowercase..."
-          mv Gradle.properties gradle.properties
-        fi
-
-        # Create settings.gradle if it is completely missing
-        if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
-          echo "Creating default settings.gradle..."
-          cat <<EOF > settings.gradle
-          pluginManagement {
-              repositories {
-                  maven {
-                      name = "Fabric"
-                      url = "https://maven.fabricmc.net/"
-                  }
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-          rootProject.name = "Supersonic-settings"
+        # Overwrite settings.gradle
+        cat <<EOF > settings.gradle
+        pluginManagement {
+            repositories {
+                maven {
+                    name = "Fabric"
+                    url = "https://maven.fabricmc.net/"
+                }
+                mavenCentral()
+                gradlePluginPortal()
+            }
+        }
+        rootProject.name = "Supersonic-settings"
         EOF
-        fi
+
+        # Overwrite gradle.properties with essential Fabric variables
+        cat <<EOF > gradle.properties
+        org.gradle.jvmargs=-Xmx1G
+        org.gradle.parallel=true
+        
+        minecraft_version=1.20.1
+        yarn_mappings=1.20.1+build.10
+        loader_version=0.15.11
+        fabric_version=0.92.2+1.20.1
+        
+        mod_version=1.0.0
+        maven_group=com.greeko.supersonic
+        archives_base_name=Supersonic-settings
+        EOF
 
     - name: Generate Wrapper and Build Mod
       run: |
@@ -66,7 +72,6 @@ jobs:
 
         chmod +x gradlew
         
-        # Using --refresh-dependencies to clear out any corrupted Loom caches
         ./gradlew build --refresh-dependencies --stacktrace
 
     - name: Upload Mod Artifacts
