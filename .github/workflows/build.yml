@@ -1,4 +1,4 @@
-name: Build Supersonic-settings Mod (MC 1.20.1)
+name: Build Supersonic-settings Mod
 
 on:
   push:
@@ -27,11 +27,11 @@ jobs:
       with:
         gradle-version: '8.8'
 
-    - name: Force Overwrite Project Files
+    - name: Fix Missing Project Files and Fabric JSON
       run: |
-        echo "Forcing correct settings.gradle and gradle.properties to prevent NullPointerException..."
-        
-        # Overwrite settings.gradle
+        echo "Creating necessary project files if missing or empty..."
+
+        # 1. Overwrite settings.gradle
         cat <<EOF > settings.gradle
         pluginManagement {
             repositories {
@@ -46,7 +46,7 @@ jobs:
         rootProject.name = "Supersonic-settings"
         EOF
 
-        # Overwrite gradle.properties with essential Fabric variables
+        # 2. Overwrite gradle.properties
         cat <<EOF > gradle.properties
         org.gradle.jvmargs=-Xmx1G
         org.gradle.parallel=true
@@ -61,9 +61,35 @@ jobs:
         archives_base_name=Supersonic-settings
         EOF
 
+        # 3. Ensure src/main/resources/fabric.mod.json exists and is valid JSON
+        mkdir -p src/main/resources
+        FABRIC_JSON="src/main/resources/fabric.mod.json"
+        
+        if [ ! -s "$FABRIC_JSON" ]; then
+          echo "fabric.mod.json is missing or empty! Creating a valid fabric.mod.json..."
+          cat <<EOF > "$FABRIC_JSON"
+        {
+          "schemaVersion": 1,
+          "id": "supersonic_settings",
+          "version": "1.0.0",
+          "name": "Supersonic-settings",
+          "description": "Supersonic Settings Mod for Minecraft 1.20.1",
+          "authors": ["greeko20"],
+          "license": "MIT",
+          "environment": "*",
+          "entrypoints": {},
+          "depends": {
+            "fabricloader": ">=0.15.11",
+            "minecraft": "~1.20.1",
+            "java": ">=17"
+          }
+        }
+        EOF
+        fi
+
     - name: Generate Wrapper and Build Mod
       run: |
-        echo "Setting up environment for Minecraft 1.20.1..."
+        echo "Setting up Gradle wrapper and building..."
         
         if [ ! -f "gradlew" ]; then
           echo "Generating Gradle wrapper..."
@@ -71,7 +97,6 @@ jobs:
         fi
 
         chmod +x gradlew
-        
         ./gradlew build --refresh-dependencies --stacktrace
 
     - name: Upload Mod Artifacts
