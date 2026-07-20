@@ -56,9 +56,9 @@ jobs:
         rootProject.name = 'Supersonic-Settings'
         """)
 
-        # 2. Generate gradle.properties
+        # 2. Generate gradle.properties with extended connection timeouts
         with open('gradle.properties', 'w', encoding='utf-8') as f:
-            f.write("""org.gradle.jvmargs=-Xmx2G
+            f.write("""org.gradle.jvmargs=-Xmx2G -Dorg.gradle.internal.http.socketTimeout=120000 -Dorg.gradle.internal.http.connectionTimeout=120000
         org.gradle.parallel=true
 
         minecraft_version=1.20.1
@@ -85,6 +85,7 @@ jobs:
 
         repositories {
             mavenCentral()
+            maven { url = 'https://maven.fabricmc.net/' }
             maven { url = 'https://maven.terraformersmc.com/' }
             maven { url = 'https://maven.shedaniel.me/' }
             maven { url = 'https://api.modrinth.com/maven' }
@@ -171,14 +172,26 @@ jobs:
             }
         }""")
 
-    - name: Build Mod
+    - name: Build Mod with Network Retry
       run: |
         echo "Building Fabric Mod..."
         if [ ! -f "gradlew" ]; then
           gradle wrapper --gradle-version 8.8
         fi
         chmod +x gradlew
-        ./gradlew build --warning-mode all -x test
+        
+        n=0
+        until [ "$n" -ge 3 ]
+        do
+           ./gradlew build --stacktrace --refresh-dependencies -x test && break
+           n=$((n+1))
+           echo "Download interrupted by Maven server, retrying attempt $n/3 in 10 seconds..."
+           sleep 10
+        done
+        if [ "$n" -ge 3 ]; then
+           echo "Build failed after 3 network retry attempts."
+           exit 1
+        fi
 
     - name: Upload Mod Artifacts
       uses: actions/upload-artifact@v4
