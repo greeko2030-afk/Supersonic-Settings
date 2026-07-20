@@ -10,7 +10,11 @@ on:
 jobs:
   build:
     name: Build Supersonic-settings (1.20.1)
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: bash
 
     steps:
     - name: Checkout Repository
@@ -27,113 +31,109 @@ jobs:
       with:
         gradle-version: '8.8'
 
-    - name: Fix Repository Structure & Auto-Configure
+    - name: Fix Capitalized File Names
       run: |
-        echo "Fixing file names and injecting correct configurations..."
-
-        # 1. Fix capitalized file names (Linux is case-sensitive)
         mv Settings.gradle settings.gradle 2>/dev/null || true
         mv Gradle.properties gradle.properties 2>/dev/null || true
 
-        # 2. Force a working settings.gradle
-        cat << 'EOF' > settings.gradle
-        pluginManagement {
-            repositories {
-                maven { url = "https://maven.fabricmc.net/" }
-                mavenCentral()
-                gradlePluginPortal()
-            }
-        }
-        rootProject.name = "Supersonic-Settings"
-EOF
+    - name: Generate configurations and code
+      run: |
+        echo "Creating settings.gradle..."
+        echo "$SETTINGS_CONTENT" > settings.gradle
 
-        # 3. Force a rock-solid build.gradle for 1.20.1
-        cat << 'EOF' > build.gradle
-        plugins {
-            id 'fabric-loom' version '1.6-SNAPSHOT'
-            id 'maven-publish'
-        }
+        echo "Creating build.gradle..."
+        echo "$BUILD_CONTENT" > build.gradle
 
-        version = "1.0.0"
-        group = "net.supersonic"
-
-        repositories {
-            mavenCentral()
-        }
-
-        dependencies {
-            minecraft "com.mojang:minecraft:1.20.1"
-            mappings "net.fabricmc:yarn:1.20.1+build.10:v2"
-            modImplementation "net.fabricmc:fabric-loader:0.15.11"
-            modImplementation "net.fabricmc.fabric-api:fabric-api:0.92.2+1.20.1"
-        }
-
-        processResources {
-            inputs.property "version", project.version
-            filesMatching("fabric.mod.json") {
-                expand "version": project.version
-            }
-        }
-
-        tasks.withType(JavaCompile).configureEach {
-            it.options.release = 17
-        }
-
-        java {
-            withSourcesJar()
-            sourceCompatibility = JavaVersion.VERSION_17
-            targetCompatibility = JavaVersion.VERSION_17
-        }
-EOF
-
-        # 4. Force a perfectly formatted fabric.mod.json
+        echo "Creating fabric.mod.json..."
         mkdir -p src/main/resources
-        cat << 'EOF' > src/main/resources/fabric.mod.json
-        {
-          "schemaVersion": 1,
-          "id": "supersonicsettings",
-          "version": "${version}",
-          "name": "Supersonic Settings",
-          "description": "Custom Settings GUI Mod for Minecraft",
-          "authors": ["greeko20"],
-          "contact": {},
-          "license": "MIT",
-          "icon": "assets/supersonicsettings/icon.png",
-          "environment": "*",
-          "entrypoints": {
-            "client": [
-              "net.supersonic.SupersonicClient"
-            ]
-          },
-          "depends": {
-            "fabricloader": ">=0.15.11",
-            "minecraft": "~1.20.1",
-            "java": ">=17"
-          }
-        }
-EOF
+        echo "$FABRIC_JSON_CONTENT" > src/main/resources/fabric.mod.json
 
-        # 5. Ensure the Entrypoint class exists based on your specific package structure
+        echo "Creating Client Entrypoint..."
         mkdir -p src/main/java/net/supersonic
         if [ ! -f "src/main/java/net/supersonic/SupersonicClient.java" ]; then
-          echo "Creating Client Entrypoint..."
-          cat << 'EOF' > src/main/java/net/supersonic/SupersonicClient.java
-        package net.supersonic;
-
-        import net.fabricmc.api.ClientModInitializer;
-        import org.slf4j.Logger;
-        import org.slf4j.LoggerFactory;
-
-        public class SupersonicClient implements ClientModInitializer {
-            public static final Logger LOGGER = LoggerFactory.getLogger("supersonicsettings");
-
-            @Override
-            public void onInitializeClient() {
-                LOGGER.info("Supersonic Settings Mod loaded successfully!");
-            }
-        }
-EOF
+          echo "$JAVA_CONTENT" > src/main/java/net/supersonic/SupersonicClient.java
         fi
+      env:
+        SETTINGS_CONTENT: |
+          pluginManagement {
+              repositories {
+                  maven { url = "https://maven.fabricmc.net/" }
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          rootProject.name = "Supersonic-Settings"
+        
+        BUILD_CONTENT: |
+          plugins {
+              id 'fabric-loom' version '1.6-SNAPSHOT'
+              id 'maven-publish'
+          }
+          version = "1.0.0"
+          group = "net.supersonic"
+          repositories {
+              mavenCentral()
+          }
+          dependencies {
+              minecraft "com.mojang:minecraft:1.20.1"
+              mappings "net.fabricmc:yarn:1.20.1+build.10:v2"
+              modImplementation "net.fabricmc:fabric-loader:0.15.11"
+              modImplementation "net.fabricmc.fabric-api:fabric-api:0.92.2+1.20.1"
+          }
+          processResources {
+              inputs.property "version", project.version
+              filesMatching("fabric.mod.json") {
+                  expand "version": project.version
+              }
+          }
+          tasks.withType(JavaCompile).configureEach {
+              it.options.release = 17
+          }
+          java {
+              withSourcesJar()
+              sourceCompatibility = JavaVersion.VERSION_17
+              targetCompatibility = JavaVersion.VERSION_17
+          }
+        
+        FABRIC_JSON_CONTENT: |
+          {
+            "schemaVersion": 1,
+            "id": "supersonicsettings",
+            "version": "1.0.0",
+            "name": "Supersonic Settings",
+            "description": "Custom Settings GUI Mod for Minecraft",
+            "authors": ["greeko20"],
+            "contact": {},
+            "license": "MIT",
+            "icon": "assets/supersonicsettings/icon.png",
+            "environment": "*",
+            "entrypoints": {
+              "client": [
+                "net.supersonic.SupersonicClient"
+              ]
+            },
+            "depends": {
+              "fabricloader": ">=0.15.11",
+              "minecraft": "~1.20.1",
+              "java": ">=17"
+            }
+          }
+        
+        JAVA_CONTENT: |
+          package net.supersonic;
+          
+          import net.fabricmc.api.ClientModInitializer;
+          import org.slf4j.Logger;
+          import org.slf4j.LoggerFactory;
+          
+          public class SupersonicClient implements ClientModInitializer {
+              public static final Logger LOGGER = LoggerFactory.getLogger("supersonicsettings");
+          
+              @Override
+              public void onInitializeClient() {
+                  LOGGER.info("Supersonic Settings Mod loaded successfully!");
+              }
+          }
 
     - name: Build Mod
       run: |
