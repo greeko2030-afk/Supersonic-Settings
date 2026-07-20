@@ -1,123 +1,99 @@
 package net.supersonic.gui.tabs;
 
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.text.Text;
 import net.minecraft.client.gui.widget.ClickableWidget;
-import net.supersonic.gui.widgets.SupersonicToggle;
+import net.minecraft.text.Text;
 import net.supersonic.gui.widgets.SupersonicSlider;
+import net.supersonic.gui.widgets.SupersonicToggle;
 import java.util.List;
 
 public class PerformanceTab {
-    private final int x;
-    private final int y;
+    private final int x, y;
 
     public PerformanceTab(int startX, int startY) {
         this.x = startX;
         this.y = startY;
     }
 
-    public void init(List<ClickableWidget> widgets) {
-        int leftColX = x + 180; // Leaving space for sidebar
-        int rightColX = x + 650; // Right side panel
-        
-        // --- FPS BOOST SECTION ---
-        int currentY = y + 100;
-        widgets.add(new SupersonicSlider(leftColX + 300, currentY, 150, 20, Text.empty(), 1.0, "", " Unlimited"));
-        currentY += 35;
-        widgets.add(new SupersonicSlider(leftColX + 300, currentY, 150, 20, Text.empty(), 0.6, "", " FPS"));
-        currentY += 35;
-        widgets.add(new SupersonicToggle(leftColX + 410, currentY, 40, 18, true, state -> {}));
-        currentY += 35;
-        widgets.add(new SupersonicToggle(leftColX + 410, currentY, 40, 18, true, state -> {}));
-        currentY += 35;
-        widgets.add(new SupersonicToggle(leftColX + 410, currentY, 40, 18, true, state -> {}));
-        currentY += 35;
-        widgets.add(new SupersonicToggle(leftColX + 410, currentY, 40, 18, true, state -> {}));
+    public void init(List<ClickableWidget> widgets, MinecraftClient client) {
+        int contentX = x + 200;
+        int widgetX = contentX + 380;
+        int startY = y + 70;
 
-        // --- RENDER OPTIMIZATION SECTION ---
-        currentY += 50;
-        widgets.add(new SupersonicSlider(leftColX + 300, currentY, 150, 20, Text.empty(), 0.5, "", " Chunks"));
-        currentY += 35;
-        widgets.add(new SupersonicSlider(leftColX + 300, currentY, 150, 20, Text.empty(), 0.4, "", " Chunks"));
-        currentY += 35;
-        widgets.add(new SupersonicToggle(leftColX + 410, currentY, 40, 18, true, state -> {}));
-        currentY += 35;
-        widgets.add(new SupersonicToggle(leftColX + 410, currentY, 40, 18, true, state -> {}));
-        currentY += 35;
-        widgets.add(new SupersonicToggle(leftColX + 410, currentY, 40, 18, true, state -> {}));
-        currentY += 35;
-        widgets.add(new SupersonicToggle(leftColX + 410, currentY, 40, 18, true, state -> {}));
+        // --- REAL Max FPS Slider (10 to 260) ---
+        int currentFps = client.options.getMaxFps().getValue();
+        double fpsProgress = (currentFps == 260) ? 1.0 : (currentFps - 10.0) / 250.0;
+        
+        widgets.add(new SupersonicSlider(widgetX, startY, 120, 16, Text.empty(), fpsProgress, "", (currentFps == 260 ? "Unlimited" : currentFps + " FPS")) {
+            @Override
+            protected void applyValue() {
+                int newFps = (int) (10 + (this.value * 250));
+                if (newFps >= 255) newFps = 260; // 260 is considered unlimited in vanilla
+                client.options.getMaxFps().setValue(newFps);
+                this.updateMessage();
+            }
+            @Override
+            protected void updateMessage() {
+                int val = client.options.getMaxFps().getValue();
+                this.setMessage(Text.literal(val >= 260 ? "Unlimited" : val + " FPS"));
+            }
+        });
+
+        // --- REAL Render Distance Slider (2 to 32) ---
+        startY += 160; // Jump to Render Optimization section
+        int currentRenderDist = client.options.getViewDistance().getValue();
+        double renderProgress = (currentRenderDist - 2.0) / 30.0;
+
+        widgets.add(new SupersonicSlider(widgetX, startY, 120, 16, Text.empty(), renderProgress, "", currentRenderDist + " Chunks") {
+            @Override
+            protected void applyValue() {
+                int chunks = (int) (2 + (this.value * 30));
+                client.options.getViewDistance().setValue(chunks);
+                this.updateMessage();
+            }
+            @Override
+            protected void updateMessage() {
+                this.setMessage(Text.literal(client.options.getViewDistance().getValue() + " Chunks"));
+            }
+        });
+
+        // --- REAL Simulation Distance Slider ---
+        startY += 30;
+        int currentSimDist = client.options.getSimulationDistance().getValue();
+        double simProgress = (currentSimDist - 5.0) / 27.0; // Usually 5 to 32
+
+        widgets.add(new SupersonicSlider(widgetX, startY, 120, 16, Text.empty(), simProgress, "", currentSimDist + " Chunks") {
+            @Override
+            protected void applyValue() {
+                int chunks = (int) (5 + (this.value * 27));
+                client.options.getSimulationDistance().setValue(chunks);
+                this.updateMessage();
+            }
+            @Override
+            protected void updateMessage() {
+                this.setMessage(Text.literal(client.options.getSimulationDistance().getValue() + " Chunks"));
+            }
+        });
     }
 
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        int leftColX = x + 180;
-        int rightColX = x + 650;
+        int contentX = x + 200;
+        context.drawText(MinecraftClient.getInstance().textRenderer, "PERFORMANCE", contentX, y + 20, 0xFFFFFF, true);
         
-        // Header
-        context.drawText(context.textRenderer, "⚡ PERFORMANCE", leftColX, y + 40, 0xFFFFFF, true);
-        context.drawText(context.textRenderer, "Maximize FPS. Minimize lag. Built for speed.", leftColX, y + 55, 0xAAAAAA, false);
+        // Draw Performance Overview Right Panel (Real FPS reading)
+        int panelX = x + 720;
+        int panelY = y + 20;
+        context.fill(panelX, panelY, panelX + 200, panelY + 480, 0xFF0A111A);
+        context.drawBorder(panelX, panelY, 200, 480, 0xFF1A3344);
         
-        // Section: FPS BOOST
-        int currentY = y + 80;
-        context.drawText(context.textRenderer, "FPS BOOST", leftColX, currentY, 0x00FFFF, false);
+        context.drawText(MinecraftClient.getInstance().textRenderer, "PERFORMANCE OVERVIEW", panelX + 20, panelY + 15, 0x00FFFF, false);
         
-        currentY += 25;
-        drawSetting(context, leftColX, currentY, "Max FPS", "Set the maximum FPS limit.");
-        currentY += 35;
-        drawSetting(context, leftColX, currentY, "Min FPS", "Set the minimum FPS limit.");
-        currentY += 35;
-        drawSetting(context, leftColX, currentY, "Dynamic FPS", "Automatically adjust FPS based on performance.");
-        currentY += 35;
-        drawSetting(context, leftColX, currentY, "FPS Stabilizer", "Reduce FPS drops and frame spikes.");
-        currentY += 35;
-        drawSetting(context, leftColX, currentY, "AI Frame Interpolation (AIFI)", "Generate extra frames using AI for ultra smooth gameplay.");
-        currentY += 35;
-        drawSetting(context, leftColX, currentY, "Low Latency Mode", "Reduces input delay for faster response.");
-
-        // Section: RENDER OPTIMIZATION
-        currentY += 45;
-        context.drawText(context.textRenderer, "RENDER OPTIMIZATION", leftColX, currentY, 0x00FFFF, false);
-        
-        currentY += 25;
-        drawSetting(context, leftColX, currentY, "Render Distance", "Adjust how far you can see.");
-        currentY += 35;
-        drawSetting(context, leftColX, currentY, "Simulation Distance", "Adjust how far entities and chunks are simulated.");
-        currentY += 35;
-        drawSetting(context, leftColX, currentY, "Smooth Chunk Loading", "Reduce lag spikes while loading chunks.");
-        currentY += 35;
-        drawSetting(context, leftColX, currentY, "Entity Culling", "Don't render entities you can't see.");
-        currentY += 35;
-        drawSetting(context, leftColX, currentY, "Block & Face Culling", "Reduce unnecessary block rendering.");
-        currentY += 35;
-        drawSetting(context, leftColX, currentY, "Occlusion Culling", "Don't render what's behind blocks.");
-
-        // --- RIGHT PANEL (PERFORMANCE OVERVIEW) ---
-        context.drawText(context.textRenderer, "PERFORMANCE OVERVIEW", rightColX, y + 80, 0x00FFFF, false);
-        
-        // Mockup for the Circular Gauge
-        context.fill(rightColX + 50, y + 120, rightColX + 150, y + 220, 0xFF112233); 
-        context.drawText(context.textRenderer, "4000+", rightColX + 80, y + 160, 0xFFFFFF, true);
-        context.drawText(context.textRenderer, "FPS", rightColX + 90, y + 175, 0xAAAAAA, false);
-        context.drawText(context.textRenderer, "Excellent", rightColX + 75, y + 195, 0x00FF00, false);
-        
-        // Stats List
-        int statY = y + 250;
-        drawStat(context, rightColX, statY, "AVG FPS", "4021 FPS");
-        drawStat(context, rightColX, statY += 20, "1% LOW", "3856 FPS");
-        drawStat(context, rightColX, statY += 20, "FRAME TIME", "0.24 ms");
-        drawStat(context, rightColX, statY += 20, "RENDER TIME", "0.19 ms");
-        drawStat(context, rightColX, statY += 20, "GPU UTILIZATION", "42%");
-        drawStat(context, rightColX, statY += 20, "CPU UTILIZATION", "28%");
-        drawStat(context, rightColX, statY += 20, "RAM USAGE", "3.2 / 8 GB");
-    }
-
-    private void drawSetting(DrawContext context, int x, int y, String title, String desc) {
-        context.drawText(context.textRenderer, title, x + 20, y, 0xFFFFFF, false);
-        context.drawText(context.textRenderer, desc, x + 20, y + 12, 0x888888, false);
-    }
-    
-    private void drawStat(DrawContext context, int x, int y, String label, String value) {
-        context.drawText(context.textRenderer, label, x, y, 0xCCCCCC, false);
-        context.drawText(context.textRenderer, value, x + 150 - context.textRenderer.getWidth(value), y, 0xFFFFFF, false);
+        // Real Live FPS
+        String liveFps = MinecraftClient.getInstance().getCurrentFps() + " FPS";
+        context.getMatrices().push();
+        context.getMatrices().scale(1.5f, 1.5f, 1.5f);
+        context.drawText(MinecraftClient.getInstance().textRenderer, liveFps, (int)((panelX + 60) / 1.5f), (int)((panelY + 100) / 1.5f), 0xFFFFFF, true);
+        context.getMatrices().pop();
     }
 }
