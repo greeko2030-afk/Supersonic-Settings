@@ -27,6 +27,11 @@ jobs:
       with:
         gradle-version: '8.8'
 
+    - name: Clean Previous Cache
+      run: |
+        rm -rf .gradle
+        rm -rf build
+
     - name: Generate Project Files and Configurations
       shell: python
       run: |
@@ -82,6 +87,7 @@ jobs:
             mavenCentral()
             maven { url = 'https://maven.terraformersmc.com/' }
             maven { url = 'https://maven.shedaniel.me/' }
+            maven { url = 'https://api.modrinth.com/maven' }
         }
 
         dependencies {
@@ -115,7 +121,7 @@ jobs:
         }
         """)
 
-        # 4. Force generation of clean and valid fabric.mod.json
+        # 4. Generate valid fabric.mod.json
         os.makedirs('src/main/resources', exist_ok=True)
         mod_json_path = 'src/main/resources/fabric.mod.json'
         with open(mod_json_path, 'w', encoding='utf-8') as f:
@@ -172,7 +178,7 @@ jobs:
           gradle wrapper --gradle-version 8.8
         fi
         chmod +x gradlew
-        ./gradlew build --stacktrace -x test
+        ./gradlew build --warning-mode all -x test
 
     - name: Upload Mod Artifacts
       uses: actions/upload-artifact@v4
