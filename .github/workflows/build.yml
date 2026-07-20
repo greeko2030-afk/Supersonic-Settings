@@ -10,11 +10,7 @@ on:
 jobs:
   build:
     name: Build Supersonic-settings (1.20.1)
-    runs-on: windows-latest
-
-    defaults:
-      run:
-        shell: bash
+    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout Repository
