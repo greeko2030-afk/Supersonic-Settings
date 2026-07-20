@@ -28,18 +28,19 @@ jobs:
         gradle-version: '8.8'
 
     - name: Generate Project Files and Configurations
+      shell: python
       run: |
-        python3 -c "
-        import os, shutil
+        import os
+        import shutil
 
         # Fix capitalized file names for Linux compatibility
         for src, dst in [('Settings.gradle', 'settings.gradle'), ('Gradle.properties', 'gradle.properties')]:
-            if os.path.exists(src) and src != dst:
+            if os.path.exists(src):
                 shutil.move(src, dst)
 
         # 1. Generate settings.gradle
         with open('settings.gradle', 'w', encoding='utf-8') as f:
-            f.write('''pluginManagement {
+            f.write("""pluginManagement {
             repositories {
                 maven { url = 'https://maven.fabricmc.net/' }
                 mavenCentral()
@@ -47,11 +48,11 @@ jobs:
             }
         }
         rootProject.name = 'Supersonic-Settings'
-        ''')
+        """)
 
         # 2. Generate gradle.properties
         with open('gradle.properties', 'w', encoding='utf-8') as f:
-            f.write('''org.gradle.jvmargs=-Xmx2G
+            f.write("""org.gradle.jvmargs=-Xmx2G
         org.gradle.parallel=true
 
         minecraft_version=1.20.1
@@ -62,11 +63,11 @@ jobs:
         mod_version=1.0.0
         maven_group=net.supersonic
         archives_base_name=Supersonic-Settings
-        ''')
+        """)
 
         # 3. Generate build.gradle
         with open('build.gradle', 'w', encoding='utf-8') as f:
-            f.write('''plugins {
+            f.write("""plugins {
             id 'fabric-loom' version '1.6.13'
             id 'maven-publish'
         }
@@ -104,12 +105,12 @@ jobs:
             sourceCompatibility = JavaVersion.VERSION_17
             targetCompatibility = JavaVersion.VERSION_17
         }
-        ''')
+        """)
 
         # 4. Generate fabric.mod.json
         os.makedirs('src/main/resources', exist_ok=True)
         with open('src/main/resources/fabric.mod.json', 'w', encoding='utf-8') as f:
-            f.write('''{
+            f.write("""{
           "schemaVersion": 1,
           "id": "supersonicsettings",
           "version": "${version}",
@@ -129,14 +130,14 @@ jobs:
             "minecraft": "~1.20.1",
             "java": ">=17"
           }
-        }''')
+        }""")
 
         # 5. Ensure Client Entrypoint exists
         os.makedirs('src/main/java/net/supersonic', exist_ok=True)
         client_file = 'src/main/java/net/supersonic/SupersonicClient.java'
         if not os.path.exists(client_file):
             with open(client_file, 'w', encoding='utf-8') as f:
-                f.write('''package net.supersonic;
+                f.write("""package net.supersonic;
 
         import net.fabricmc.api.ClientModInitializer;
         import org.slf4j.Logger;
@@ -149,8 +150,7 @@ jobs:
             public void onInitializeClient() {
                 LOGGER.info("Supersonic Settings Mod loaded successfully!");
             }
-        }''')
-        "
+        }""")
 
     - name: Build Mod
       run: |
