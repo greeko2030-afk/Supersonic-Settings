@@ -27,118 +27,139 @@ jobs:
       with:
         gradle-version: '8.8'
 
-    - name: Fix Capitalized File Names
+    - name: Generate Project Files and Configurations
       run: |
-        mv Settings.gradle settings.gradle 2>/dev/null || true
-        mv Gradle.properties gradle.properties 2>/dev/null || true
+        python3 -c "
+        import os, shutil
 
-    - name: Generate configurations and code
-      run: |
-        echo "Creating settings.gradle..."
-        echo "$SETTINGS_CONTENT" > settings.gradle
+        # Fix capitalized file names for Linux compatibility
+        for src, dst in [('Settings.gradle', 'settings.gradle'), ('Gradle.properties', 'gradle.properties')]:
+            if os.path.exists(src) and src != dst:
+                shutil.move(src, dst)
 
-        echo "Creating build.gradle..."
-        echo "$BUILD_CONTENT" > build.gradle
-
-        echo "Creating fabric.mod.json..."
-        mkdir -p src/main/resources
-        echo "$FABRIC_JSON_CONTENT" > src/main/resources/fabric.mod.json
-
-        echo "Creating Client Entrypoint..."
-        mkdir -p src/main/java/net/supersonic
-        if [ ! -f "src/main/java/net/supersonic/SupersonicClient.java" ]; then
-          echo "$JAVA_CONTENT" > src/main/java/net/supersonic/SupersonicClient.java
-        fi
-      env:
-        SETTINGS_CONTENT: |
-          pluginManagement {
-              repositories {
-                  maven { url = "https://maven.fabricmc.net/" }
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-          rootProject.name = "Supersonic-Settings"
-        
-        BUILD_CONTENT: |
-          plugins {
-              id 'fabric-loom' version '1.6-SNAPSHOT'
-              id 'maven-publish'
-          }
-          version = "1.0.0"
-          group = "net.supersonic"
-          repositories {
-              mavenCentral()
-          }
-          dependencies {
-              minecraft "com.mojang:minecraft:1.20.1"
-              mappings "net.fabricmc:yarn:1.20.1+build.10:v2"
-              modImplementation "net.fabricmc:fabric-loader:0.15.11"
-              modImplementation "net.fabricmc.fabric-api:fabric-api:0.92.2+1.20.1"
-          }
-          processResources {
-              inputs.property "version", project.version
-              filesMatching("fabric.mod.json") {
-                  expand "version": project.version
-              }
-          }
-          tasks.withType(JavaCompile).configureEach {
-              it.options.release = 17
-          }
-          java {
-              withSourcesJar()
-              sourceCompatibility = JavaVersion.VERSION_17
-              targetCompatibility = JavaVersion.VERSION_17
-          }
-        
-        FABRIC_JSON_CONTENT: |
-          {
-            "schemaVersion": 1,
-            "id": "supersonicsettings",
-            "version": "1.0.0",
-            "name": "Supersonic Settings",
-            "description": "Custom Settings GUI Mod for Minecraft",
-            "authors": ["greeko20"],
-            "contact": {},
-            "license": "MIT",
-            "icon": "assets/supersonicsettings/icon.png",
-            "environment": "*",
-            "entrypoints": {
-              "client": [
-                "net.supersonic.SupersonicClient"
-              ]
-            },
-            "depends": {
-              "fabricloader": ">=0.15.11",
-              "minecraft": "~1.20.1",
-              "java": ">=17"
+        # 1. Generate settings.gradle
+        with open('settings.gradle', 'w', encoding='utf-8') as f:
+            f.write('''pluginManagement {
+            repositories {
+                maven { url = 'https://maven.fabricmc.net/' }
+                mavenCentral()
+                gradlePluginPortal()
             }
+        }
+        rootProject.name = 'Supersonic-Settings'
+        ''')
+
+        # 2. Generate gradle.properties
+        with open('gradle.properties', 'w', encoding='utf-8') as f:
+            f.write('''org.gradle.jvmargs=-Xmx2G
+        org.gradle.parallel=true
+
+        minecraft_version=1.20.1
+        yarn_mappings=1.20.1+build.10
+        loader_version=0.15.11
+        fabric_version=0.92.2+1.20.1
+
+        mod_version=1.0.0
+        maven_group=net.supersonic
+        archives_base_name=Supersonic-Settings
+        ''')
+
+        # 3. Generate build.gradle
+        with open('build.gradle', 'w', encoding='utf-8') as f:
+            f.write('''plugins {
+            id 'fabric-loom' version '1.6.13'
+            id 'maven-publish'
+        }
+
+        version = project.mod_version
+        group = project.maven_group
+
+        repositories {
+            mavenCentral()
+            maven { url = 'https://maven.terraformersmc.com/' }
+            maven { url = 'https://maven.shedaniel.me/' }
+        }
+
+        dependencies {
+            minecraft "com.mojang:minecraft:${project.minecraft_version}"
+            mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+            modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+            modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+        }
+
+        processResources {
+            inputs.property "version", project.version
+            filesMatching("fabric.mod.json") {
+                expand "version": project.version
+            }
+        }
+
+        tasks.withType(JavaCompile).configureEach {
+            it.options.release = 17
+            it.options.encoding = 'UTF-8'
+        }
+
+        java {
+            withSourcesJar()
+            sourceCompatibility = JavaVersion.VERSION_17
+            targetCompatibility = JavaVersion.VERSION_17
+        }
+        ''')
+
+        # 4. Generate fabric.mod.json
+        os.makedirs('src/main/resources', exist_ok=True)
+        with open('src/main/resources/fabric.mod.json', 'w', encoding='utf-8') as f:
+            f.write('''{
+          "schemaVersion": 1,
+          "id": "supersonicsettings",
+          "version": "${version}",
+          "name": "Supersonic Settings",
+          "description": "Custom Settings GUI Mod for Minecraft",
+          "authors": ["greeko20"],
+          "license": "MIT",
+          "icon": "assets/supersonicsettings/icon.png",
+          "environment": "*",
+          "entrypoints": {
+            "client": [
+              "net.supersonic.SupersonicClient"
+            ]
+          },
+          "depends": {
+            "fabricloader": ">=0.15.11",
+            "minecraft": "~1.20.1",
+            "java": ">=17"
           }
-        
-        JAVA_CONTENT: |
-          package net.supersonic;
-          
-          import net.fabricmc.api.ClientModInitializer;
-          import org.slf4j.Logger;
-          import org.slf4j.LoggerFactory;
-          
-          public class SupersonicClient implements ClientModInitializer {
-              public static final Logger LOGGER = LoggerFactory.getLogger("supersonicsettings");
-          
-              @Override
-              public void onInitializeClient() {
-                  LOGGER.info("Supersonic Settings Mod loaded successfully!");
-              }
-          }
+        }''')
+
+        # 5. Ensure Client Entrypoint exists
+        os.makedirs('src/main/java/net/supersonic', exist_ok=True)
+        client_file = 'src/main/java/net/supersonic/SupersonicClient.java'
+        if not os.path.exists(client_file):
+            with open(client_file, 'w', encoding='utf-8') as f:
+                f.write('''package net.supersonic;
+
+        import net.fabricmc.api.ClientModInitializer;
+        import org.slf4j.Logger;
+        import org.slf4j.LoggerFactory;
+
+        public class SupersonicClient implements ClientModInitializer {
+            public static final Logger LOGGER = LoggerFactory.getLogger("supersonicsettings");
+
+            @Override
+            public void onInitializeClient() {
+                LOGGER.info("Supersonic Settings Mod loaded successfully!");
+            }
+        }''')
+        "
 
     - name: Build Mod
       run: |
-        echo "Building..."
+        echo "Building Fabric Mod..."
         if [ ! -f "gradlew" ]; then
           gradle wrapper --gradle-version 8.8
         fi
         chmod +x gradlew
-        ./gradlew build --stacktrace
+        ./gradlew build --stacktrace -x test
 
     - name: Upload Mod Artifacts
       uses: actions/upload-artifact@v4
