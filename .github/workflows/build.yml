@@ -1,4 +1,4 @@
-name: Build Supersonic-settings Mod
+name: Build Supersonic-settings Mod (MC 1.20.1)
 
 on:
   push:
@@ -27,12 +27,12 @@ jobs:
       with:
         gradle-version: '8.8'
 
-    - name: Fix Missing Project Files and Fabric JSON
+    - name: Ensure All Required Mod Files Exist
       run: |
-        echo "Creating necessary project files if missing or empty..."
+        echo "Validating and setting up project environment..."
 
-        # 1. Overwrite settings.gradle
-        cat <<EOF > settings.gradle
+        # 1. Force valid settings.gradle
+        cat <<'EOF' > settings.gradle
         pluginManagement {
             repositories {
                 maven {
@@ -46,58 +46,98 @@ jobs:
         rootProject.name = "Supersonic-settings"
         EOF
 
-        # 2. Overwrite gradle.properties
-        cat <<EOF > gradle.properties
-        org.gradle.jvmargs=-Xmx1G
+        # 2. Force valid gradle.properties
+        cat <<'EOF' > gradle.properties
+        org.gradle.jvmargs=-Xmx2G
         org.gradle.parallel=true
-        
+
         minecraft_version=1.20.1
         yarn_mappings=1.20.1+build.10
         loader_version=0.15.11
         fabric_version=0.92.2+1.20.1
-        
+
         mod_version=1.0.0
         maven_group=com.greeko.supersonic
         archives_base_name=Supersonic-settings
         EOF
 
-        # 3. Ensure src/main/resources/fabric.mod.json exists and is valid JSON
-        mkdir -p src/main/resources
-        FABRIC_JSON="src/main/resources/fabric.mod.json"
-        
-        if [ ! -s "$FABRIC_JSON" ]; then
-          echo "fabric.mod.json is missing or empty! Creating a valid fabric.mod.json..."
-          cat <<EOF > "$FABRIC_JSON"
-        {
-          "schemaVersion": 1,
-          "id": "supersonic_settings",
-          "version": "1.0.0",
-          "name": "Supersonic-settings",
-          "description": "Supersonic Settings Mod for Minecraft 1.20.1",
-          "authors": ["greeko20"],
-          "license": "MIT",
-          "environment": "*",
-          "entrypoints": {},
-          "depends": {
-            "fabricloader": ">=0.15.11",
-            "minecraft": "~1.20.1",
-            "java": ">=17"
+        # 3. Create build.gradle if missing or empty
+        if [ ! -s "build.gradle" ]; then
+          echo "build.gradle is missing or empty! Creating default build.gradle..."
+          cat <<'EOF' > build.gradle
+          plugins {
+              id 'fabric-loom' version '1.6-SNAPSHOT'
+              id 'maven-publish'
           }
-        }
-        EOF
+
+          version = project.mod_version
+          group = project.maven_group
+
+          repositories {
+              mavenCentral()
+          }
+
+          dependencies {
+              minecraft "com.mojang:minecraft:${project.minecraft_version}"
+              mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+              modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+              modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+          }
+
+          processResources {
+              inputs.property "version", project.version
+              filesMatching("fabric.mod.json") {
+                  expand "version": project.version
+              }
+          }
+
+          tasks.withType(JavaCompile).configureEach {
+              it.options.release = 17
+          }
+
+          java {
+              withSourcesJar()
+              sourceCompatibility = JavaVersion.VERSION_17
+              targetCompatibility = JavaVersion.VERSION_17
+          }
+          EOF
+        fi
+
+        # 4. Ensure src/main/resources/fabric.mod.json exists
+        mkdir -p src/main/resources
+        if [ ! -s "src/main/resources/fabric.mod.json" ]; then
+          echo "fabric.mod.json is missing or empty! Generating default JSON..."
+          cat <<'EOF' > src/main/resources/fabric.mod.json
+          {
+            "schemaVersion": 1,
+            "id": "supersonic_settings",
+            "version": "${version}",
+            "name": "Supersonic-settings",
+            "description": "Supersonic Settings Mod for Minecraft 1.20.1",
+            "authors": ["greeko20"],
+            "license": "MIT",
+            "environment": "*",
+            "entrypoints": {},
+            "depends": {
+              "fabricloader": ">=0.15.11",
+              "minecraft": "~1.20.1",
+              "java": ">=17"
+            }
+          }
+          EOF
         fi
 
     - name: Generate Wrapper and Build Mod
       run: |
-        echo "Setting up Gradle wrapper and building..."
-        
+        echo "Building Minecraft mod..."
+
         if [ ! -f "gradlew" ]; then
           echo "Generating Gradle wrapper..."
           gradle wrapper --gradle-version 8.8
         fi
 
         chmod +x gradlew
-        ./gradlew build --refresh-dependencies --stacktrace
+        ./gradlew build --stacktrace
 
     - name: Upload Mod Artifacts
       uses: actions/upload-artifact@v4
