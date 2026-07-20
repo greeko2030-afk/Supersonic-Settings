@@ -24,25 +24,33 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
 
-    - name: Find and Grant Executable Permission to gradlew
+    - name: Auto-Detect and Build
       run: |
-        find . -name "gradlew" -exec chmod +x {} +
-
-    - name: Build with Gradle
-      run: |
-        GRADLEW_PATH=$(find . -name "gradlew" -print -quit)
-        if [ -n "$GRADLEW_PATH" ]; then
-          DIR=$(dirname "$GRADLEW_PATH")
-          echo "Found gradlew in $DIR. Building..."
-          cd "$DIR" && ./gradlew build
+        # Searching for the build.gradle or build.gradle.kts file
+        BUILD_FILE=$(find . -maxdepth 3 -name "build.gradle" -o -name "build.gradle.kts" | head -n 1)
+        
+        if [ -z "$BUILD_FILE" ]; then
+          echo "Error: 'build.gradle' file was not found anywhere in your repository!"
+          echo "Please make sure you have pushed your Minecraft project files correctly to GitHub."
+          exit 1
+        fi
+        
+        DIR=$(dirname "$BUILD_FILE")
+        echo "Found project in directory: $DIR"
+        cd "$DIR"
+        
+        if [ -f "gradlew" ]; then
+          echo "Found gradlew wrapper. Executing..."
+          chmod +x gradlew
+          ./gradlew build
         else
-          echo "gradlew not found! Falling back to system gradle..."
+          echo "gradlew not found. Executing system gradle..."
           gradle build
         fi
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: Mod-Build-Artifacts
+        name: Supersonic-settings
         path: '**/build/libs/*.jar'
         if-no-files-found: error
