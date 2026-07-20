@@ -27,59 +27,45 @@ jobs:
       with:
         gradle-version: '8.8'
 
-    - name: Force Overwrite All Mod Files
+    - name: Fix Repository Structure & Auto-Configure
       run: |
-        echo "Forcefully overwriting project files to prevent NullPointerException..."
+        echo "Fixing file names and injecting correct configurations..."
 
-        # 1. Force overwrite settings.gradle
+        # 1. Fix capitalized file names (Linux is case-sensitive)
+        mv Settings.gradle settings.gradle 2>/dev/null || true
+        mv Gradle.properties gradle.properties 2>/dev/null || true
+
+        # 2. Force a working settings.gradle
         cat << 'EOF' > settings.gradle
         pluginManagement {
             repositories {
-                maven {
-                    name = "Fabric"
-                    url = "https://maven.fabricmc.net/"
-                }
+                maven { url = "https://maven.fabricmc.net/" }
                 mavenCentral()
                 gradlePluginPortal()
             }
         }
-        rootProject.name = "Supersonic-settings"
+        rootProject.name = "Supersonic-Settings"
         EOF
 
-        # 2. Force overwrite gradle.properties
-        cat << 'EOF' > gradle.properties
-        org.gradle.jvmargs=-Xmx2G
-        org.gradle.parallel=true
-
-        minecraft_version=1.20.1
-        yarn_mappings=1.20.1+build.10
-        loader_version=0.15.11
-        fabric_version=0.92.2+1.20.1
-
-        mod_version=1.0.0
-        maven_group=com.greeko.supersonic
-        archives_base_name=Supersonic-settings
-        EOF
-
-        # 3. Force overwrite build.gradle
+        # 3. Force a rock-solid build.gradle for 1.20.1
         cat << 'EOF' > build.gradle
         plugins {
             id 'fabric-loom' version '1.6-SNAPSHOT'
             id 'maven-publish'
         }
 
-        version = project.mod_version
-        group = project.maven_group
+        version = "1.0.0"
+        group = "net.supersonic"
 
         repositories {
             mavenCentral()
         }
 
         dependencies {
-            minecraft "com.mojang:minecraft:${project.minecraft_version}"
-            mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
-            modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-            modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+            minecraft "com.mojang:minecraft:1.20.1"
+            mappings "net.fabricmc:yarn:1.20.1+build.10:v2"
+            modImplementation "net.fabricmc:fabric-loader:0.15.11"
+            modImplementation "net.fabricmc.fabric-api:fabric-api:0.92.2+1.20.1"
         }
 
         processResources {
@@ -100,19 +86,25 @@ jobs:
         }
         EOF
 
-        # 4. Force overwrite fabric.mod.json
+        # 4. Force a perfectly formatted fabric.mod.json
         mkdir -p src/main/resources
         cat << 'EOF' > src/main/resources/fabric.mod.json
         {
           "schemaVersion": 1,
-          "id": "supersonic_settings",
+          "id": "supersonicsettings",
           "version": "${version}",
-          "name": "Supersonic-settings",
-          "description": "Supersonic Settings Mod for Minecraft 1.20.1",
+          "name": "Supersonic Settings",
+          "description": "Custom Settings GUI Mod for Minecraft",
           "authors": ["greeko20"],
+          "contact": {},
           "license": "MIT",
+          "icon": "assets/supersonicsettings/icon.png",
           "environment": "*",
-          "entrypoints": {},
+          "entrypoints": {
+            "client": [
+              "net.supersonic.SupersonicClient"
+            ]
+          },
           "depends": {
             "fabricloader": ">=0.15.11",
             "minecraft": "~1.20.1",
@@ -121,21 +113,40 @@ jobs:
         }
         EOF
 
-    - name: Generate Wrapper and Build Mod
-      run: |
-        echo "Building Minecraft mod..."
+        # 5. Ensure the Entrypoint class exists based on your specific package structure
+        mkdir -p src/main/java/net/supersonic
+        if [ ! -f "src/main/java/net/supersonic/SupersonicClient.java" ]; then
+          echo "Creating Client Entrypoint..."
+          cat << 'EOF' > src/main/java/net/supersonic/SupersonicClient.java
+          package net.supersonic;
 
-        if [ ! -f "gradlew" ]; then
-          echo "Generating Gradle wrapper..."
-          gradle wrapper --gradle-version 8.8
+          import net.fabricmc.api.ClientModInitializer;
+          import org.slf4j.Logger;
+          import org.slf4j.LoggerFactory;
+
+          public class SupersonicClient implements ClientModInitializer {
+              public static final Logger LOGGER = LoggerFactory.getLogger("supersonicsettings");
+
+              @Override
+              public void onInitializeClient() {
+                  LOGGER.info("Supersonic Settings Mod loaded successfully!");
+              }
+          }
+          EOF
         fi
 
+    - name: Build Mod
+      run: |
+        echo "Building..."
+        if [ ! -f "gradlew" ]; then
+          gradle wrapper --gradle-version 8.8
+        fi
         chmod +x gradlew
         ./gradlew build --stacktrace
 
     - name: Upload Mod Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: Supersonic-settings-1.20.1
+        name: Supersonic-Settings-1.20.1
         path: '**/build/libs/*.jar'
         if-no-files-found: error
