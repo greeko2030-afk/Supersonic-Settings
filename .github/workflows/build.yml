@@ -1,4 +1,4 @@
-name: Build Mod (Java 21)
+name: Build Supersonic-settings Mod
 
 on:
   push:
@@ -9,6 +9,7 @@ on:
 
 jobs:
   build:
+    name: Build Supersonic-settings
     runs-on: ubuntu-latest
 
     steps:
@@ -24,31 +25,35 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
 
-    - name: Auto-Detect and Build
+    - name: Build Supersonic-settings Mod
       run: |
-        # Searching for the build.gradle or build.gradle.kts file
-        BUILD_FILE=$(find . -maxdepth 3 -name "build.gradle" -o -name "build.gradle.kts" | head -n 1)
+        echo "Searching for build.gradle in the repository..."
         
+        # Search for build.gradle or build.gradle.kts anywhere in the repository
+        BUILD_FILE=$(find . -name "build.gradle" -o -name "build.gradle.kts" | head -n 1)
+
         if [ -z "$BUILD_FILE" ]; then
-          echo "Error: 'build.gradle' file was not found anywhere in your repository!"
-          echo "Please make sure you have pushed your Minecraft project files correctly to GitHub."
+          echo "=========================================================="
+          echo "ERROR: 'build.gradle' file was NOT found in the repository!"
+          echo "Please push your source code and build.gradle to GitHub."
+          echo "=========================================================="
           exit 1
         fi
-        
-        DIR=$(dirname "$BUILD_FILE")
-        echo "Found project in directory: $DIR"
-        cd "$DIR"
-        
+
+        PROJECT_DIR=$(dirname "$BUILD_FILE")
+        echo "Found Supersonic-settings project in directory: $PROJECT_DIR"
+        cd "$PROJECT_DIR"
+
         if [ -f "gradlew" ]; then
-          echo "Found gradlew wrapper. Executing..."
+          echo "Executing gradlew wrapper..."
           chmod +x gradlew
           ./gradlew build
         else
-          echo "gradlew not found. Executing system gradle..."
+          echo "gradlew wrapper not found. Using system Gradle..."
           gradle build
         fi
 
-    - name: Upload Artifacts
+    - name: Upload Supersonic-settings Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: Supersonic-settings
