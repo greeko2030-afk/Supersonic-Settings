@@ -1,1 +1,41 @@
+name: Windows Build 
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch: # This allows you to run the build manually from GitHub
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    # 1. Checkout the repository code
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    # 2. Setup Java 17 (Required for Minecraft 1.20.1)
+    - name: Set up Java 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    # 3. Setup Gradle caching for faster builds
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+
+    # 4. Run the build command using Windows batch file
+    - name: Build with Gradle
+      run: .\gradlew.bat build
+
+    # 5. Upload the compiled .jar files so you can download them
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Windows-Build-Artifacts
+        path: build/libs/
+        if-no-files-found: error
 
