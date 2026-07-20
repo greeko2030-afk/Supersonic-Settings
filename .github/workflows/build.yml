@@ -27,11 +27,19 @@ jobs:
       with:
         gradle-version: '8.8'
 
-    - name: Fix Missing Fabric Plugin Repository
+    - name: Fix Case Sensitivity and Missing Files
       run: |
-        echo "Checking for settings.gradle..."
+        echo "Checking repository files..."
+        
+        # Linux is case-sensitive. Rename Gradle.properties to gradle.properties if it exists.
+        if [ -f "Gradle.properties" ]; then
+          echo "Found uppercase Gradle.properties! Renaming to lowercase..."
+          mv Gradle.properties gradle.properties
+        fi
+
+        # Create settings.gradle if it is completely missing
         if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
-          echo "settings.gradle not found! Creating one to resolve fabric-loom..."
+          echo "Creating default settings.gradle..."
           cat <<EOF > settings.gradle
           pluginManagement {
               repositories {
@@ -52,12 +60,14 @@ jobs:
         echo "Setting up environment for Minecraft 1.20.1..."
         
         if [ ! -f "gradlew" ]; then
-          echo "gradlew wrapper missing! Generating Gradle 8.8 wrapper..."
+          echo "Generating Gradle wrapper..."
           gradle wrapper --gradle-version 8.8
         fi
 
         chmod +x gradlew
-        ./gradlew build --stacktrace
+        
+        # Using --refresh-dependencies to clear out any corrupted Loom caches
+        ./gradlew build --refresh-dependencies --stacktrace
 
     - name: Upload Mod Artifacts
       uses: actions/upload-artifact@v4
