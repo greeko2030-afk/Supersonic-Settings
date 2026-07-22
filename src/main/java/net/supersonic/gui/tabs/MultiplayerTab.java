@@ -57,7 +57,7 @@ public class MultiplayerTab {
 
         // Direct Connect Button (Actually connects to the default server)
         widgets.add(ButtonWidget.builder(Text.literal("Direct Connect"), btn -> {
-            ServerInfo defaultServer = new ServerInfo("NarratorMC", "www.NarratorMC.net", false);
+            ServerInfo defaultServer = new ServerInfo("NarratorMC", "www.NarratorMC.net", ServerInfo.ServerType.OTHER);
             ConnectScreen.connect(client.currentScreen, client, ServerAddress.parse(defaultServer.address), defaultServer, false);
         }).dimensions(rightPanelX + 110, btnY, 90, 20).build());
     }
