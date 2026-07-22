@@ -65,15 +65,13 @@ jobs:
         yarn_mappings=1.20.1+build.10
         loader_version=0.15.11
         fabric_version=0.92.2+1.20.1
-        cloth_config_version=11.1.118
-        mod_menu_version=7.2.2
 
         mod_version=1.0.0
         maven_group=net.supersonic
         archives_base_name=Supersonic-Settings
         """)
 
-        # 3. Generate build.gradle (Using Modrinth Maven for ModMenu)
+        # 3. Generate build.gradle (Excluding external maven dependencies to avoid downtime issues)
         with open('build.gradle', 'w', encoding='utf-8') as f:
             f.write("""plugins {
             id 'fabric-loom' version '1.6-SNAPSHOT'
@@ -86,8 +84,6 @@ jobs:
         repositories {
             mavenCentral()
             maven { url = 'https://maven.fabricmc.net/' }
-            maven { url = 'https://maven.shedaniel.me/' }
-            maven { url = 'https://api.modrinth.com/maven' } // Modrinth Maven added
         }
 
         dependencies {
@@ -95,13 +91,6 @@ jobs:
             mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
             modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
             modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-
-            modApi("me.shedaniel.cloth:cloth-config-fabric:${project.cloth_config_version}") {
-                exclude group: "net.fabricmc.fabric-api"
-            }
-            
-            // Fetching ModMenu from Modrinth instead of flaky TerraformersMC
-            modImplementation "maven.modrinth:modmenu:${project.mod_menu_version}"
         }
 
         processResources {
@@ -180,7 +169,7 @@ jobs:
           gradle wrapper --gradle-version 8.8
         fi
         chmod +x gradlew
-        ./gradlew build --stacktrace --refresh-dependencies -x test
+        ./gradlew build --stacktrace -x test
 
     - name: Upload Mod Artifacts
       uses: actions/upload-artifact@v4
