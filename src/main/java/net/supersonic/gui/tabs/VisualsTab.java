@@ -4,7 +4,6 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.ClickableWidget;
 import net.minecraft.client.option.GraphicsMode;
-import net.minecraft.client.option.AoMode;
 import net.minecraft.client.option.CloudRenderMode;
 import net.minecraft.text.Text;
 import net.supersonic.gui.widgets.SupersonicSlider;
@@ -36,10 +35,10 @@ public class VisualsTab {
         }));
         currentY += 32;
 
-        // Real Smooth Lighting Toggle (Off / Minimum / Maximum)
-        boolean isSmoothLighting = client.options.getAo().getValue() == AoMode.MAX;
+        // Real Smooth Lighting Toggle (Off / Maximum)
+        boolean isSmoothLighting = client.options.getAo().getValue();
         widgets.add(new SupersonicToggle(widgetX, currentY, 40, 16, isSmoothLighting, state -> {
-            client.options.getAo().setValue(state ? AoMode.MAX : AoMode.OFF);
+            client.options.getAo().setValue(state);
         }));
         currentY += 32;
 
