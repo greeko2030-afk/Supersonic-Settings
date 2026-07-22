@@ -1,25 +1,38 @@
 package net.supersonic.gui.widgets;
 
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.widget.PressableWidget;
 import net.minecraft.text.Text;
 
-public class SupersonicDropdown extends ButtonWidget {
+public class SupersonicDropdown extends PressableWidget {
+    private final OnClick onClick;
 
-    public SupersonicDropdown(int x, int y, int width, int height, Text message, PressAction onPress) {
-        super(x, y, width, height, message, onPress, DEFAULT_NARRATION_SUPPLIER);
+    public interface OnClick {
+        void onClick(SupersonicDropdown button);
+    }
+
+    public SupersonicDropdown(int x, int y, int width, int height, Text message, OnClick onClick) {
+        super(x, y, width, height, message);
+        this.onClick = onClick;
     }
 
     @Override
-    public void renderButton(DrawContext context, int mouseX, int mouseY, float delta) {
-        // Draw Dark Background and Border
-        context.fill(this.getX(), this.getY(), this.getX() + this.width, this.getY() + this.height, 0xFF0A111A);
-        context.drawBorder(this.getX(), this.getY(), this.width, this.height, 0xFF334455);
+    public void onPress() {
+        if (this.onClick != null) {
+            this.onClick.onClick(this);
+        }
+    }
+
+    @Override
+    protected void renderButton(DrawContext context, int mouseX, int mouseY, float delta) {
+        MinecraftClient client = MinecraftClient.getInstance();
         
-        // Draw Selected Text
-        context.drawText(context.textRenderer, this.getMessage(), this.getX() + 10, this.getY() + (this.height - 8) / 2, 0xFFFFFF, false);
-        
-        // Draw Dropdown Arrow 'v'
-        context.drawText(context.textRenderer, "v", this.getX() + this.width - 15, this.getY() + (this.height - 8) / 2, 0xAAAAAA, false);
+        // Draw dropdown background box
+        context.fill(this.getX(), this.getY(), this.getX() + this.width, this.getY() + this.height, 0xFF222222);
+        context.drawBorder(this.getX(), this.getY(), this.width, this.height, 0xFF00FFFF);
+
+        // Draw text safely using MinecraftClient textRenderer
+        context.drawText(client.textRenderer, this.getMessage(), this.getX() + 10, this.getY() + (this.height - 8) / 2, 0xFFFFFF, false);
     }
 }
