@@ -5,34 +5,45 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.PressableWidget;
 import net.minecraft.text.Text;
 
-public class SupersonicDropdown extends PressableWidget {
-    private final OnClick onClick;
+public class SupersonicToggle extends PressableWidget {
+    private boolean state;
+    private final OnStateChanged onStateChanged;
 
-    public interface OnClick {
-        void onClick(SupersonicDropdown button);
+    public interface OnStateChanged {
+        void onChange(boolean newState);
     }
 
-    public SupersonicDropdown(int x, int y, int width, int height, Text message, OnClick onClick) {
-        super(x, y, width, height, message);
-        this.onClick = onClick;
+    public SupersonicToggle(int x, int y, int width, int height, boolean initialState, OnStateChanged onStateChanged) {
+        super(x, y, width, height, Text.empty());
+        this.state = initialState;
+        this.onStateChanged = onStateChanged;
+        this.updateMessage();
     }
 
     @Override
     public void onPress() {
-        if (this.onClick != null) {
-            this.onClick.onClick(this);
+        this.state = !this.state;
+        this.updateMessage();
+        if (this.onStateChanged != null) {
+            this.onStateChanged.onChange(this.state);
         }
+    }
+
+    private void updateMessage() {
+        this.setMessage(Text.literal(this.state ? "ON" : "OFF"));
     }
 
     @Override
     protected void renderButton(DrawContext context, int mouseX, int mouseY, float delta) {
         MinecraftClient client = MinecraftClient.getInstance();
+        int bgColor = this.state ? 0xFF00AA00 : 0xFFAA0000;
         
-        // Draw dropdown background box
-        context.fill(this.getX(), this.getY(), this.getX() + this.width, this.getY() + this.height, 0xFF222222);
-        context.drawBorder(this.getX(), this.getY(), this.width, this.height, 0xFF00FFFF);
+        // Draw toggle background box
+        context.fill(this.getX(), this.getY(), this.getX() + this.width, this.getY() + this.height, bgColor);
+        context.drawBorder(this.getX(), this.getY(), this.width, this.height, 0xFFFFFFFF);
 
         // Draw text safely using MinecraftClient textRenderer
-        context.drawText(client.textRenderer, this.getMessage(), this.getX() + 10, this.getY() + (this.height - 8) / 2, 0xFFFFFF, false);
+        int textColor = 0xFFFFFF;
+        context.drawText(client.textRenderer, this.getMessage(), this.getX() + (this.width - client.textRenderer.getWidth(this.getMessage())) / 2, this.getY() + (this.height - 8) / 2, textColor, false);
     }
 }
