@@ -1,47 +1,38 @@
 package net.supersonic.gui.widgets;
 
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.widget.ClickableWidget;
+import net.minecraft.client.gui.widget.PressableWidget;
 import net.minecraft.text.Text;
 
-public class SupersonicToggle extends ClickableWidget {
-    private boolean toggled;
-    private final ToggleAction action;
+public class SupersonicDropdown extends PressableWidget {
+    private final OnClick onClick;
 
-    public SupersonicToggle(int x, int y, int width, int height, boolean initialState, ToggleAction action) {
-        super(x, y, width, height, Text.empty());
-        this.toggled = initialState;
-        this.action = action;
+    public interface OnClick {
+        void onClick(SupersonicDropdown button);
+    }
+
+    public SupersonicDropdown(int x, int y, int width, int height, Text message, OnClick onClick) {
+        super(x, y, width, height, message);
+        this.onClick = onClick;
     }
 
     @Override
-    public void renderButton(DrawContext context, int mouseX, int mouseY, float delta) {
-        int color = this.toggled ? 0xFF00E5FF : 0xFF333333; // Cyan for ON, Dark Gray for OFF
-        int knobColor = 0xFFFFFFFF;
-        
-        // Draw background pill (simplified as a rectangle for now, use textures for perfect curves)
-        context.fill(this.getX(), this.getY(), this.getX() + this.width, this.getY() + this.height, color);
-        
-        // Draw knob
-        int knobX = this.toggled ? this.getX() + this.width - this.height + 2 : this.getX() + 2;
-        context.fill(knobX, this.getY() + 2, knobX + this.height - 4, this.getY() + this.height - 4, knobColor);
-        
-        // Draw Text inside
-        String text = this.toggled ? "ON" : "OFF";
-        int textX = this.toggled ? this.getX() + 4 : this.getX() + 16;
-        context.drawText(context.textRenderer, text, textX, this.getY() + (this.height - 8) / 2, 0xFFFFFF, false);
+    public void onPress() {
+        if (this.onClick != null) {
+            this.onClick.onClick(this);
+        }
     }
 
     @Override
-    public void onClick(double mouseX, double mouseY) {
-        this.toggled = !this.toggled;
-        this.action.onToggle(this.toggled);
-    }
+    protected void renderButton(DrawContext context, int mouseX, int mouseY, float delta) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        
+        // Draw dropdown background box
+        context.fill(this.getX(), this.getY(), this.getX() + this.width, this.getY() + this.height, 0xFF222222);
+        context.drawBorder(this.getX(), this.getY(), this.width, this.height, 0xFF00FFFF);
 
-    @Override
-    protected void appendClickableNarrations(net.minecraft.client.gui.screen.narration.NarrationMessageBuilder builder) {}
-
-    public interface ToggleAction {
-        void onToggle(boolean newState);
+        // Draw text safely using MinecraftClient textRenderer
+        context.drawText(client.textRenderer, this.getMessage(), this.getX() + 10, this.getY() + (this.height - 8) / 2, 0xFFFFFF, false);
     }
 }
