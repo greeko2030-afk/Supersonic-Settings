@@ -3,6 +3,7 @@ package net.supersonic.gui.widgets;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.PressableWidget;
+import net.minecraft.client.gui.screen.narration.NarrationMessageBuilder;
 import net.minecraft.text.Text;
 
 public class SupersonicToggle extends PressableWidget {
@@ -34,15 +35,18 @@ public class SupersonicToggle extends PressableWidget {
     }
 
     @Override
+    protected void appendClickableNarrations(NarrationMessageBuilder builder) {
+        this.appendDefaultNarrations(builder);
+    }
+
+    @Override
     protected void renderButton(DrawContext context, int mouseX, int mouseY, float delta) {
         MinecraftClient client = MinecraftClient.getInstance();
         int bgColor = this.state ? 0xFF00AA00 : 0xFFAA0000;
         
-        // Draw toggle background box
         context.fill(this.getX(), this.getY(), this.getX() + this.width, this.getY() + this.height, bgColor);
         context.drawBorder(this.getX(), this.getY(), this.width, this.height, 0xFFFFFFFF);
 
-        // Draw text safely using MinecraftClient textRenderer
         int textColor = 0xFFFFFF;
         context.drawText(client.textRenderer, this.getMessage(), this.getX() + (this.width - client.textRenderer.getWidth(this.getMessage())) / 2, this.getY() + (this.height - 8) / 2, textColor, false);
     }
