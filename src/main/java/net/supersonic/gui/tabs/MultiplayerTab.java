@@ -2,7 +2,7 @@ package net.supersonic.gui.tabs;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.ConnectScreen; // Fixed Import
+import net.minecraft.client.gui.screen.ConnectScreen;
 import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.ClickableWidget;
@@ -28,36 +28,30 @@ public class MultiplayerTab {
 
         // --- CONNECTION & NETWORK ---
         
-        // Smart Ping Optimization (Requires custom mixin, toggle updates config)
-        widgets.add(new SupersonicToggle(widgetX, currentY, 40, 16, true, state -> { /* Update custom config */ }));
+        widgets.add(new SupersonicToggle(widgetX, currentY, 40, 16, true, state -> { }));
         currentY += 32;
 
-        // Reduced Packet Delay
-        widgets.add(new SupersonicToggle(widgetX, currentY, 40, 16, true, state -> { /* Update custom config */ }));
+        widgets.add(new SupersonicToggle(widgetX, currentY, 40, 16, true, state -> { }));
         currentY += 32;
 
-        // Server Lag Indicator
-        widgets.add(new SupersonicToggle(widgetX, currentY, 40, 16, true, state -> { /* Update custom config */ }));
+        widgets.add(new SupersonicToggle(widgetX, currentY, 40, 16, true, state -> { }));
         currentY += 32;
 
-        // Real Chat Colors Toggle (Vanilla Feature)
         boolean hasChatColors = client.options.getChatColors().getValue();
         widgets.add(new SupersonicToggle(widgetX, currentY, 40, 16, hasChatColors, state -> {
             client.options.getChatColors().setValue(state);
         }));
 
-        // --- QUICK CONNECT BUTTONS (REAL WORKING) ---
+        // --- QUICK CONNECT BUTTONS ---
         int rightPanelX = x + 720;
         int btnY = y + 250;
 
-        // Add Server Button (Opens Real Vanilla Multiplayer Screen)
         widgets.add(ButtonWidget.builder(Text.literal("Add Server"), btn -> {
             client.setScreen(new MultiplayerScreen(client.currentScreen));
         }).dimensions(rightPanelX + 10, btnY, 90, 20).build());
 
-        // Direct Connect Button (Actually connects to the default server)
         widgets.add(ButtonWidget.builder(Text.literal("Direct Connect"), btn -> {
-            ServerInfo defaultServer = new ServerInfo("NarratorMC", "www.NarratorMC.net", ServerInfo.ServerType.OTHER);
+            ServerInfo defaultServer = new ServerInfo("NarratorMC", "www.NarratorMC.net", false);
             ConnectScreen.connect(client.currentScreen, client, ServerAddress.parse(defaultServer.address), defaultServer, false);
         }).dimensions(rightPanelX + 110, btnY, 90, 20).build());
     }
@@ -66,10 +60,8 @@ public class MultiplayerTab {
         MinecraftClient client = MinecraftClient.getInstance();
         int contentX = x + 200;
 
-        // Main Headers
         context.drawText(client.textRenderer, "MULTIPLAYER", contentX, y + 20, 0xFFFFFF, true);
         context.drawText(client.textRenderer, "Enhance your multiplayer experience.", contentX, y + 35, 0xAAAAAA, false);
-
         context.drawText(client.textRenderer, "CONNECTION & NETWORK", contentX, y + 55, 0x00FFFF, false);
 
         int textY = y + 75;
@@ -81,7 +73,6 @@ public class MultiplayerTab {
         textY += 32;
         context.drawText(client.textRenderer, "Custom Chat Colors", contentX, textY, 0xFFFFFF, false);
 
-        // --- RIGHT PANEL: SERVER INFO PREVIEW ---
         int rightPanelX = x + 720;
         int rightPanelY = y + 20;
         
@@ -89,19 +80,15 @@ public class MultiplayerTab {
         context.drawBorder(rightPanelX, rightPanelY, 210, 200, 0xFF1A3344);
         
         context.drawText(client.textRenderer, "SERVER INFO PREVIEW", rightPanelX + 10, rightPanelY + 10, 0x00FFFF, false);
-        
-        // Dynamic Server Display
         context.drawText(client.textRenderer, "NarratorMC", rightPanelX + 10, rightPanelY + 30, 0xFFFFFF, true);
         context.drawText(client.textRenderer, "Online: 132/500", rightPanelX + 10, rightPanelY + 45, 0xAAAAAA, false);
         context.drawText(client.textRenderer, "TPS: 19.96", rightPanelX + 140, rightPanelY + 45, 0x00FF00, false);
         
-        // Render fake player list preview
         int pY = rightPanelY + 70;
         context.drawText(client.textRenderer, "[OWNER] Rafiee_playssMC", rightPanelX + 30, pY, 0xFF5555, false);
         pY += 20;
         context.drawText(client.textRenderer, "[ADMIN] ChatGPT", rightPanelX + 30, pY, 0x5555FF, false);
         
-        // QUICK CONNECT HEADER
         context.drawText(client.textRenderer, "QUICK CONNECT", rightPanelX, y + 230, 0x00FFFF, false);
     }
 }
