@@ -26,7 +26,7 @@ public final class HudRenderer {
         if (cfg == null || !cfg.hudEnabled) return;
         if (mc.player == null || mc.world == null) return;
         if (mc.options.hudHidden) return;
-        if (mc.getDebugHud().shouldShowDebugHud()) return; // F3 is open
+        if (mc.options.debugEnabled) return; // F3 is open
 
         List<String> lines = new ArrayList<>();
 
