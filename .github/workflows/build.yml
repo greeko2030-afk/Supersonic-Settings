@@ -1,179 +1,31 @@
-name: Build Supersonic-settings Mod (MC 1.20.1)
+name: Build Supersonic Settings (MC 1.21.1)
 
 on:
   push:
     branches: [ "main", "master" ]
   pull_request:
-    branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build Supersonic-settings (1.20.1)
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Java 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
 
-    - name: Setup Gradle 8.8
-      uses: gradle/actions/setup-gradle@v3
-      with:
-        gradle-version: '8.8'
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.10'
 
-    - name: Clean Previous Cache
-      run: |
-        rm -rf .gradle
-        rm -rf build
+      - name: Build
+        run: gradle build --stacktrace
 
-    - name: Generate Project Files and Configurations
-      shell: python
-      run: |
-        import os
-        import shutil
-        import glob
-
-        # Fix capitalized file names for Linux compatibility
-        for src, dst in [('Settings.gradle', 'settings.gradle'), ('Gradle.properties', 'gradle.properties')]:
-            if os.path.exists(src) and src != dst:
-                shutil.move(src, dst)
-
-        # 1. Generate settings.gradle
-        with open('settings.gradle', 'w', encoding='utf-8') as f:
-            f.write("""pluginManagement {
-            repositories {
-                maven { url = 'https://maven.fabricmc.net/' }
-                mavenCentral()
-                gradlePluginPortal()
-            }
-        }
-        rootProject.name = 'Supersonic-Settings'
-        """)
-
-        # 2. Generate gradle.properties
-        with open('gradle.properties', 'w', encoding='utf-8') as f:
-            f.write("""org.gradle.jvmargs=-Xmx2G
-        org.gradle.parallel=true
-
-        minecraft_version=1.20.1
-        yarn_mappings=1.20.1+build.10
-        loader_version=0.15.11
-        fabric_version=0.92.2+1.20.1
-
-        mod_version=1.0.0
-        maven_group=net.supersonic
-        archives_base_name=Supersonic-Settings
-        """)
-
-        # 3. Generate build.gradle (Excluding external maven dependencies to avoid downtime issues)
-        with open('build.gradle', 'w', encoding='utf-8') as f:
-            f.write("""plugins {
-            id 'fabric-loom' version '1.6-SNAPSHOT'
-            id 'maven-publish'
-        }
-
-        version = project.mod_version
-        group = project.maven_group
-
-        repositories {
-            mavenCentral()
-            maven { url = 'https://maven.fabricmc.net/' }
-        }
-
-        dependencies {
-            minecraft "com.mojang:minecraft:${project.minecraft_version}"
-            mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
-            modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-            modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-        }
-
-        processResources {
-            inputs.property "version", project.version
-            filesMatching("fabric.mod.json") {
-                expand "version": project.version
-            }
-        }
-
-        tasks.withType(JavaCompile).configureEach {
-            it.options.release = 17
-            it.options.encoding = 'UTF-8'
-        }
-
-        java {
-            withSourcesJar()
-            sourceCompatibility = JavaVersion.VERSION_17
-            targetCompatibility = JavaVersion.VERSION_17
-        }
-        """)
-
-        # 4. Generate valid fabric.mod.json
-        os.makedirs('src/main/resources', exist_ok=True)
-        mod_json_path = 'src/main/resources/fabric.mod.json'
-        with open(mod_json_path, 'w', encoding='utf-8') as f:
-            f.write("""{
-          "schemaVersion": 1,
-          "id": "supersonicsettings",
-          "version": "${version}",
-          "name": "Supersonic Settings",
-          "description": "Custom Settings GUI Mod for Minecraft",
-          "authors": [
-            "greeko20"
-          ],
-          "contact": {},
-          "license": "MIT",
-          "icon": "assets/supersonicsettings/icon.png",
-          "environment": "*",
-          "entrypoints": {
-            "client": [
-              "net.supersonic.SupersonicClient"
-            ]
-          },
-          "depends": {
-            "fabricloader": ">=0.15.11",
-            "minecraft": "~1.20.1",
-            "java": ">=17"
-          }
-        }""")
-
-        # 5. Ensure Client Entrypoint exists if repo has no Java files
-        os.makedirs('src/main/java/net/supersonic', exist_ok=True)
-        java_files = glob.glob('src/main/java/**/*.java', recursive=True)
-        if not java_files:
-            client_file = 'src/main/java/net/supersonic/SupersonicClient.java'
-            with open(client_file, 'w', encoding='utf-8') as f:
-                f.write("""package net.supersonic;
-
-        import net.fabricmc.api.ClientModInitializer;
-        import org.slf4j.Logger;
-        import org.slf4j.LoggerFactory;
-
-        public class SupersonicClient implements ClientModInitializer {
-            public static final Logger LOGGER = LoggerFactory.getLogger("supersonicsettings");
-
-            @Override
-            public void onInitializeClient() {
-                LOGGER.info("Supersonic Settings Mod loaded successfully!");
-            }
-        }""")
-
-    - name: Build Mod
-      run: |
-        echo "Building Fabric Mod..."
-        if [ ! -f "gradlew" ]; then
-          gradle wrapper --gradle-version 8.8
-        fi
-        chmod +x gradlew
-        ./gradlew build --stacktrace -x test
-
-    - name: Upload Mod Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: Supersonic-Settings-1.20.1
-        path: '**/build/libs/*.jar'
-        if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Supersonic-Settings-1.21.1
+          path: build/libs/*.jar
+          if-no-files-found: error
