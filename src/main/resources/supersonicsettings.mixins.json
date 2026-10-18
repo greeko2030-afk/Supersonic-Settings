@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "net.supersonic.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": ["DebugHudMixin"],
+  "injectors": { "defaultRequire": 1 }
+}
