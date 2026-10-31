@@ -2,349 +2,351 @@ package net.supersonic.gui;
 
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.option.KeybindsScreen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.gui.widget.ClickableWidget;
-import net.minecraft.client.gui.widget.CyclingButtonWidget;
-import net.minecraft.client.gui.widget.SliderWidget;
-import net.minecraft.client.option.CloudRenderMode;
-import net.minecraft.client.option.GameOptions;
-import net.minecraft.client.option.GraphicsMode;
-import net.minecraft.client.option.ParticlesMode;
-import net.minecraft.client.option.SimpleOption;
-import net.minecraft.sound.SoundCategory;
+import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
 import net.supersonic.SupersonicClient;
-import net.supersonic.SupersonicConfig;
-import org.lwjgl.opengl.GL11;
+import net.supersonic.gui.Rows.Row;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.function.Consumer;
+import java.util.Map;
 
 public class SupersonicScreen extends Screen {
 
-    private enum Tab {
-        GAMEPLAY("Gameplay"),
-        VISUALS("Visuals"),
-        PERFORMANCE("Performance"),
-        HUD("HUD & Overlay"),
-        AUDIO("Audio"),
-        CONTROLS("Controls"),
-        MODS("Mods & Addons");
-
-        final String title;
-
-        Tab(String title) {
-            this.title = title;
-        }
+    private record Btn(int x, int y, int w, int h, Runnable action) {
     }
 
-    private static final int CYAN = 0xFF00D4FF;
-    private static final int ROW_H = 22;
+    public final List<ModContainer> mods = new ArrayList<>();
+    public int selectedMod = 0;
 
     private final Screen parent;
-    private Tab tab = Tab.GAMEPLAY;
+    private final MinecraftClient mc;
+    private final Map<Tab, List<Row>> pages;
+    private final List<Btn> buttons = new ArrayList<>();
 
+    private Tab tab = Tab.GAMEPLAY;
+    private String searchText = "";
+    private List<Row> searchResults = new ArrayList<>();
+    private TextFieldWidget search;
+    private double scroll = 0;
+    private Row dragRow = null;
+    private int mouseX;
+    private int mouseY;
+
+    // layout
     private int px, py, pw, ph;
-    private int sideW, contentX, contentW, contentTop, contentBottom, colW;
-    private int widgetIndex;
-    private int modScroll = 0;
-    private List<String> modLines = new ArrayList<>();
+    private int sideX, sideY, sideW, itemH;
+    private int cx, cw, cyTop, cyBottom;
+    private int rightX, rightW;
 
     public SupersonicScreen(Screen parent) {
         super(Text.literal("Supersonic Settings"));
         this.parent = parent;
+        this.mc = MinecraftClient.getInstance();
+
+        List<ModContainer> all = new ArrayList<>(FabricLoader.getInstance().getAllMods());
+        all.sort(Comparator.comparing(m -> m.getMetadata().getName().toLowerCase(Locale.ROOT)));
+        for (ModContainer m : all) {
+            String id = m.getMetadata().getId();
+            if (id.startsWith("fabric-") || id.equals("java")) continue; // hide Fabric API sub-modules
+            mods.add(m);
+        }
+        this.pages = Pages.build(mc, this);
     }
 
     // ------------------------------------------------------------------ layout
 
     @Override
     protected void init() {
-        pw = Math.min(this.width - 16, 520);
-        ph = Math.min(this.height - 16, 310);
+        pw = Math.min(this.width - 16, 780);
+        ph = Math.min(this.height - 16, 440);
         px = (this.width - pw) / 2;
         py = (this.height - ph) / 2;
 
-        sideW = 112;
-        contentX = px + sideW + 18;
-        contentW = pw - sideW - 28;
-        contentTop = py + 42;
-        contentBottom = py + ph - 32;
-        colW = (contentW - 6) / 2;
-        widgetIndex = 0;
+        sideX = px + 8;
+        sideY = py + 48;
+        sideW = 118;
+        itemH = Math.max(16, Math.min(24, (ph - 48 - 70) / Tab.values().length - 2));
 
-        // Sidebar tabs
-        int ty = py + 42;
+        rightW = pw >= 640 ? 170 : 0;
+        rightX = px + pw - 8 - rightW;
+        cx = sideX + sideW + 10;
+        cw = (rightW > 0 ? rightX - 10 : px + pw - 8) - cx;
+        cyTop = py + 80;
+        cyBottom = py + ph - 34;
+
+        search = new TextFieldWidget(this.textRenderer, px + pw - 214, py + 12, 150, 16, Text.literal("Search"));
+        search.setMaxLength(40);
+        search.setText(searchText);
+        search.setSuggestion(searchText.isEmpty() ? "Search settings..." : "");
+        search.setChangedListener(s -> {
+            searchText = s;
+            search.setSuggestion(s.isEmpty() ? "Search settings..." : "");
+            rebuildSearch();
+            scroll = 0;
+        });
+        this.addDrawableChild(search);
+    }
+
+    private void rebuildSearch() {
+        searchResults = new ArrayList<>();
+        String q = searchText.trim().toLowerCase(Locale.ROOT);
+        if (q.isEmpty()) return;
         for (Tab t : Tab.values()) {
-            String label = (t == tab ? "> " : "") + t.title;
-            ButtonWidget b = ButtonWidget.builder(Text.literal(label), btn -> {
-                tab = t;
-                modScroll = 0;
-                this.clearAndInit();
-            }).dimensions(px + 8, ty, sideW, 20).build();
-            this.addDrawableChild(b);
-            ty += ROW_H;
-        }
-
-        // Bottom buttons
-        int by = py + ph - 26;
-        int bw = 64;
-        int bx = px + pw - 8 - bw * 3 - 8;
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Apply"), b -> applyAll())
-                .dimensions(bx, by, bw, 18).build());
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Reset HUD"), b -> {
-            SupersonicClient.CONFIG.resetHud();
-            applyAll();
-            this.clearAndInit();
-        }).dimensions(bx + bw + 4, by, bw, 18).build());
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> this.close())
-                .dimensions(bx + (bw + 4) * 2, by, bw, 18).build());
-
-        buildTab();
-    }
-
-    private void buildTab() {
-        GameOptions o = this.client.options;
-        SupersonicConfig cfg = SupersonicClient.CONFIG;
-
-        switch (tab) {
-            case GAMEPLAY -> {
-                addOption(o.getAttackIndicator());
-                addOption(o.getAutoJump());
-                addOption(o.getSprintToggled());
-                addOption(o.getSneakToggled());
-                addOption(o.getBobView());
-                addOption(o.getFov());
-                addOption(o.getFovEffectScale());
-                addOption(o.getDistortionEffectScale());
-                addOption(o.getMouseSensitivity());
-                addOption(o.getShowSubtitles());
-            }
-            case VISUALS -> {
-                addOption(o.getGraphicsMode());
-                addOption(o.getAo());
-                addOption(o.getCloudRenderMode());
-                addOption(o.getParticles());
-                addOption(o.getBiomeBlendRadius());
-                addOption(o.getEntityShadows());
-                addOption(o.getGamma());
-                addOption(o.getMipmapLevels());
-                addOption(o.getEntityDistanceScaling());
-                addOption(o.getEnableVsync());
-            }
-            case PERFORMANCE -> {
-                addOption(o.getViewDistance());
-                addOption(o.getSimulationDistance());
-                addOption(o.getMaxFps());
-                addOption(o.getChunkBuilderMode());
-
-                int y = contentTop + (widgetIndex + 1) / 2 * ROW_H + 4;
-                this.addDrawableChild(ButtonWidget.builder(Text.literal("Optimize Now (safe vanilla tweaks)"),
-                        b -> {
-                            optimizeNow();
-                            this.clearAndInit();
-                        }).dimensions(contentX, y, contentW, 20).build());
-            }
-            case HUD -> {
-                addToggle("HUD Enabled", cfg.hudEnabled, v -> cfg.hudEnabled = v);
-                addToggle("FPS Counter", cfg.showFps, v -> cfg.showFps = v);
-                addToggle("CPS Counter", cfg.showCps, v -> cfg.showCps = v);
-                addToggle("Coordinates", cfg.showCoordinates, v -> cfg.showCoordinates = v);
-                addToggle("Direction", cfg.showDirection, v -> cfg.showDirection = v);
-                addToggle("Clock", cfg.showClock, v -> cfg.showClock = v);
-                addToggle("RAM Usage", cfg.showMemory, v -> cfg.showMemory = v);
-                addToggle("Background", cfg.showBackground, v -> cfg.showBackground = v);
-                addToggle("F3: Supersonic Engine", cfg.f3Info, v -> cfg.f3Info = v);
-
-                addWidget(CyclingButtonWidget.<SupersonicConfig.Corner>builder(c -> Text.literal(c.label))
-                        .values(SupersonicConfig.Corner.values())
-                        .initially(cfg.corner)
-                        .build(0, 0, colW, 20, Text.literal("Alignment"), (b, v) -> cfg.corner = v));
-
-                addWidget(new FloatSlider(0, 0, colW, "HUD Scale", 0.5f, 2.0f, cfg.hudScale, "%.2f",
-                        v -> cfg.hudScale = v));
-                addWidget(new FloatSlider(0, 0, colW, "X Offset", 0f, 200f, cfg.offsetX, "%.0f",
-                        v -> cfg.offsetX = Math.round(v)));
-                addWidget(new FloatSlider(0, 0, colW, "Y Offset", 0f, 200f, cfg.offsetY, "%.0f",
-                        v -> cfg.offsetY = Math.round(v)));
-            }
-            case AUDIO -> {
-                for (SoundCategory cat : SoundCategory.values()) {
-                    addOption(o.getSoundVolumeOption(cat));
-                }
-            }
-            case CONTROLS -> {
-                this.addDrawableChild(ButtonWidget.builder(Text.literal("Open Keybinds"),
-                        b -> this.client.setScreen(new KeybindsScreen(this, this.client.options)))
-                        .dimensions(contentX, contentTop, contentW, 20).build());
-                addOption(o.getMouseSensitivity());
-                addOption(o.getInvertYMouse());
-                addOption(o.getDiscreteMouseScroll());
-                addOption(o.getAutoJump());
-            }
-            case MODS -> {
-                modLines = new ArrayList<>();
-                List<ModContainer> mods = new ArrayList<>(FabricLoader.getInstance().getAllMods());
-                mods.sort(Comparator.comparing(m -> m.getMetadata().getName().toLowerCase(Locale.ROOT)));
-                for (ModContainer m : mods) {
-                    String id = m.getMetadata().getId();
-                    if (id.startsWith("fabric-") || id.equals("java")) continue; // hide API sub-modules
-                    modLines.add(m.getMetadata().getName() + "  §7v" + m.getMetadata().getVersion().getFriendlyString());
-                }
-                this.addDrawableChild(ButtonWidget.builder(Text.literal("Open Mods Folder"),
-                        b -> net.minecraft.util.Util.getOperatingSystem().open(
-                                FabricLoader.getInstance().getGameDir().resolve("mods").toFile()))
-                        .dimensions(contentX, contentBottom - 20, contentW, 18).build());
+            if (t == Tab.MODS) continue;
+            for (Row r : pages.get(t)) {
+                if (!r.isHeader() && r.matches(q)) searchResults.add(r);
             }
         }
     }
 
-    // ----------------------------------------------------------------- helpers
-
-    private void addOption(SimpleOption<?> option) {
-        int col = widgetIndex % 2;
-        int row = widgetIndex / 2;
-        ClickableWidget w = option.createWidget(this.client.options,
-                contentX + col * (colW + 6), contentTop + row * ROW_H, colW);
-        this.addDrawableChild(w);
-        widgetIndex++;
+    private boolean searching() {
+        return !searchText.trim().isEmpty();
     }
 
-    private void addWidget(ClickableWidget w) {
-        int col = widgetIndex % 2;
-        int row = widgetIndex / 2;
-        w.setX(contentX + col * (colW + 6));
-        w.setY(contentTop + row * ROW_H);
-        this.addDrawableChild(w);
-        widgetIndex++;
+    private List<Row> currentRows() {
+        return searching() ? searchResults : pages.get(tab);
     }
 
-    private void addToggle(String label, boolean initial, Consumer<Boolean> setter) {
-        addWidget(CyclingButtonWidget.onOffBuilder(initial)
-                .build(0, 0, colW, 20, Text.literal(label), (b, v) -> setter.accept(v)));
-    }
+    // --------------------------------------------------------------- buttons
 
-    /** Real vanilla option changes that raise FPS. */
-    private void optimizeNow() {
-        GameOptions o = this.client.options;
-        o.getViewDistance().setValue(10);
-        o.getSimulationDistance().setValue(8);
-        o.getMaxFps().setValue(260);
-        o.getEnableVsync().setValue(false);
-        o.getEntityShadows().setValue(false);
-        o.getGraphicsMode().setValue(GraphicsMode.FAST);
-        o.getCloudRenderMode().setValue(CloudRenderMode.FAST);
-        o.getParticles().setValue(ParticlesMode.DECREASED);
-        o.getBiomeBlendRadius().setValue(1);
-        applyAll();
+    public void drawButton(DrawContext ctx, int x, int y, int w, int h, String label, boolean primary,
+                           int mx, int my, Runnable action) {
+        boolean hover = mx >= x && mx < x + w && my >= y && my < y + h;
+        int bg = primary ? (hover ? 0xFF1A8FC2 : 0xFF0F6FA0) : (hover ? 0xFF17324F : 0xFF0D1E31);
+        Draw.round(ctx, x, y, w, h, bg);
+        Draw.outline(ctx, x, y, w, h, primary || hover ? Draw.CYAN : Draw.CYAN_DIM);
+        if (!label.isEmpty()) {
+            Draw.centered(ctx, this.textRenderer, label, x + w / 2, y + (h - 8) / 2, Draw.WHITE);
+        }
+        buttons.add(new Btn(x, y, w, h, action));
     }
 
     private void applyAll() {
-        this.client.options.write();
+        mc.options.write();
         SupersonicClient.CONFIG.save();
+    }
+
+    private void revertAll() {
+        for (List<Row> list : pages.values()) {
+            for (Row r : list) r.revert();
+        }
     }
 
     // ------------------------------------------------------------------ render
 
     @Override
     public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
-        // Intentionally empty: the background is drawn in render() before the widgets.
+        // Intentionally empty: the background is drawn in render().
     }
 
     @Override
-    public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
-        // Dim the world and draw the panel
-        ctx.fill(0, 0, this.width, this.height, 0x99000000);
-        ctx.fill(px, py, px + pw, py + ph, 0xF0081420);
-        ctx.drawBorder(px, py, pw, ph, CYAN);
-        ctx.fill(contentX - 8, py + 40, contentX - 7, py + ph - 34, 0x6600D4FF);
-        ctx.fill(px + 1, py + 36, px + pw - 1, py + 37, 0x6600D4FF);
+    public void render(DrawContext ctx, int mx, int my, float delta) {
+        this.mouseX = mx;
+        this.mouseY = my;
+        buttons.clear();
+        TextRenderer tr = this.textRenderer;
 
-        // Header
-        var m = ctx.getMatrices();
-        m.push();
-        m.translate(px + 10, py + 8, 0);
-        m.scale(1.5f, 1.5f, 1f);
-        ctx.drawTextWithShadow(this.textRenderer, "§b§lSUPERSONIC SETTINGS", 0, 0, 0xFFFFFF);
-        m.pop();
-        ctx.drawTextWithShadow(this.textRenderer, "Optimize. Accelerate. Dominate.", px + 10, py + 24, 0xAAAAAA);
+        ctx.fill(0, 0, this.width, this.height, 0x55000000);
+        Draw.round(ctx, px, py, pw, ph, Draw.BG);
+        Draw.outline(ctx, px, py, pw, ph, Draw.CYAN);
+        Draw.outline(ctx, px + 1, py + 1, pw - 2, ph - 2, 0x5500D4FF);
 
-        // Tab title
-        ctx.drawTextWithShadow(this.textRenderer, "§b" + tab.title.toUpperCase(Locale.ROOT),
-                px + pw - 10 - this.textRenderer.getWidth(tab.title), py + 14, 0xFFFFFF);
+        renderHeader(ctx, tr, mx, my);
+        renderSidebar(ctx, tr, mx, my);
+        renderContent(ctx, tr, mx, my);
 
-        // Sidebar footer
-        ctx.drawTextWithShadow(this.textRenderer, "§bSupersonic Engine", px + 8, py + ph - 34, 0xFFFFFF);
-        ctx.drawTextWithShadow(this.textRenderer, "§7v1.0.0 | Ctrl+RShift", px + 8, py + ph - 23, 0xFFFFFF);
-
-        if (tab == Tab.PERFORMANCE) {
-            renderLiveStats(ctx);
-        } else if (tab == Tab.MODS) {
-            renderModList(ctx);
+        if (rightW > 0) {
+            int ry = py + 48;
+            int rh = ph - 48 - 40;
+            Panels.render(this, ctx, tr, searching() ? Tab.GAMEPLAY : tab, rightX, ry, rightW, rh, mx, my);
         }
 
-        super.render(ctx, mouseX, mouseY, delta);
+        // Bottom buttons
+        int by = py + ph - 28;
+        int bw = 64;
+        int bx = px + pw - 8 - bw * 3 - 8;
+        drawButton(ctx, bx, by, bw, 18, "Apply", true, mx, my, this::applyAll);
+        drawButton(ctx, bx + bw + 4, by, bw, 18, "Reset", false, mx, my, this::revertAll);
+        drawButton(ctx, bx + (bw + 4) * 2, by, bw, 18, "Done", false, mx, my, this::close);
+
+        renderToasts(ctx, tr);
+
+        super.render(ctx, mx, my, delta); // draws the search box
     }
 
-    private void renderLiveStats(DrawContext ctx) {
-        int y = contentTop + (widgetIndex + 1) / 2 * ROW_H + 34;
-        int fps = this.client.getCurrentFps();
-        Runtime rt = Runtime.getRuntime();
-        long used = (rt.totalMemory() - rt.freeMemory()) / 1048576L;
-        long max = rt.maxMemory() / 1048576L;
+    private void renderHeader(DrawContext ctx, TextRenderer tr, int mx, int my) {
+        Draw.bolt(ctx, px + 12, py + 8, 26, Draw.CYAN);
+        Draw.scaledShadow(ctx, tr, "SUPERSONIC SETTINGS", px + 44, py + 7, Draw.CYAN, 1.4f);
+        Draw.text(ctx, tr, "Optimize. Accelerate. Dominate.", px + 44, py + 24, Draw.WHITE);
+        Draw.rect(ctx, px + 1, py + 42, pw - 2, 1, 0x6600D4FF);
 
-        String gpu;
-        try {
-            gpu = GL11.glGetString(GL11.GL_RENDERER);
-        } catch (Throwable t) {
-            gpu = "unknown";
+        // Close button
+        drawButton(ctx, px + pw - 40, py + 12, 28, 16, "X", false, mx, my, this::close);
+    }
+
+    private void renderSidebar(DrawContext ctx, TextRenderer tr, int mx, int my) {
+        Tab[] tabs = Tab.values();
+        for (int i = 0; i < tabs.length; i++) {
+            int ty = sideY + i * (itemH + 2);
+            boolean active = tabs[i] == tab && !searching();
+            boolean hover = mx >= sideX && mx < sideX + sideW && my >= ty && my < ty + itemH;
+            Draw.round(ctx, sideX, ty, sideW, itemH, active ? 0xFF0F5C86 : (hover ? Draw.ROW_HOVER : Draw.ROW));
+            if (active) Draw.outline(ctx, sideX, ty, sideW, itemH, Draw.CYAN);
+            Draw.icon(ctx, tabs[i].icon, sideX + 8, ty + (itemH - 8) / 2, active ? Draw.WHITE : Draw.CYAN);
+            Draw.text(ctx, tr, tr.trimToWidth(tabs[i].title, sideW - 34), sideX + 22, ty + (itemH - 8) / 2, Draw.WHITE);
         }
 
-        ctx.drawTextWithShadow(this.textRenderer, "§bLIVE STATS", contentX, y, 0xFFFFFF);
-        y += 12;
-        ctx.drawTextWithShadow(this.textRenderer, String.format(Locale.ROOT,
-                "FPS: §f%d §7(%.2f ms)", fps, 1000.0 / Math.max(1, fps)), contentX, y, 0xAAAAAA);
-        y += 11;
-        ctx.drawTextWithShadow(this.textRenderer, "RAM: §f" + used + " / " + max + " MB", contentX, y, 0xAAAAAA);
-        y += 11;
-        ctx.drawTextWithShadow(this.textRenderer, "GPU: §f" + gpu, contentX, y, 0xAAAAAA);
-        y += 11;
-        ctx.drawTextWithShadow(this.textRenderer, "Java: §f" + System.getProperty("java.version")
-                + " §7| CPU threads: §f" + rt.availableProcessors(), contentX, y, 0xAAAAAA);
+        int footerY = py + ph - 50;
+        if (footerY > sideY + tabs.length * (itemH + 2) + 4) {
+            Draw.round(ctx, sideX, footerY, sideW, 42, Draw.PANEL);
+            Draw.outline(ctx, sideX, footerY, sideW, 42, 0xAA0B7FA8);
+            Draw.bolt(ctx, sideX + 6, footerY + 8, 18, Draw.CYAN);
+            Draw.text(ctx, tr, "Supersonic Engine", sideX + 28, footerY + 6, Draw.WHITE);
+            Draw.text(ctx, tr, "Active", sideX + 28, footerY + 17, Draw.GREEN);
+            Draw.scaled(ctx, tr, "v1.0.0  |  Ctrl+RShift", sideX + 28, footerY + 29, Draw.GRAY, 0.75f);
+        }
     }
 
-    private void renderModList(DrawContext ctx) {
-        int top = contentTop;
-        int bottom = contentBottom - 26;
-        int lineH = 12;
-        int visible = Math.max(1, (bottom - top) / lineH);
-        int maxScroll = Math.max(0, modLines.size() - visible);
-        modScroll = Math.max(0, Math.min(modScroll, maxScroll));
+    private void renderContent(DrawContext ctx, TextRenderer tr, int mx, int my) {
+        // Title
+        String title = searching() ? "Search Results (" + searchResults.size() + ")" : tab.title;
+        String sub = searching() ? "Settings matching \"" + searchText.trim() + "\"" : tab.subtitle;
+        if (!searching()) Draw.icon(ctx, tab.icon, cx, py + 50, Draw.CYAN);
+        Draw.scaledShadow(ctx, tr, title.toUpperCase(Locale.ROOT), cx + (searching() ? 0 : 14), py + 48, Draw.WHITE, 1.3f);
+        Draw.text(ctx, tr, sub, cx, py + 64, Draw.GRAY);
 
-        ctx.drawTextWithShadow(this.textRenderer, "§bLoaded mods: §f" + modLines.size(), contentX, top - 2, 0xFFFFFF);
-        top += 12;
+        List<Row> rows = currentRows();
+        int total = 0;
+        for (Row r : rows) total += r.height();
+        int viewport = cyBottom - cyTop;
+        double maxScroll = Math.max(0, total - viewport);
+        scroll = Math.max(0, Math.min(scroll, maxScroll));
 
-        ctx.enableScissor(contentX, top, contentX + contentW, bottom);
-        int y = top;
-        for (int i = modScroll; i < modLines.size() && y < bottom; i++) {
-            ctx.drawTextWithShadow(this.textRenderer, modLines.get(i), contentX + 4, y, 0xFFFFFF);
-            y += lineH;
+        int rowW = cw - 6;
+        int y = cyTop - (int) scroll;
+        ctx.enableScissor(cx, cyTop, cx + cw, cyBottom);
+        for (Row r : rows) {
+            int h = r.height();
+            r.rx = cx;
+            r.ry = y;
+            r.rw = rowW;
+            if (y + h >= cyTop && y <= cyBottom) {
+                boolean hoverArea = mx >= cx && mx < cx + cw && my >= cyTop && my < cyBottom;
+                r.render(ctx, tr, cx, y, rowW, hoverArea ? mx : -1000, hoverArea ? my : -1000);
+            }
+            y += h;
         }
         ctx.disableScissor();
+
+        if (rows.isEmpty()) {
+            Draw.text(ctx, tr, "No settings found.", cx + 6, cyTop + 6, Draw.GRAY);
+        }
+
+        // Scroll bar
+        if (maxScroll > 0) {
+            int barX = cx + cw - 3;
+            Draw.rect(ctx, barX, cyTop, 2, viewport, 0x33FFFFFF);
+            int knobH = Math.max(16, (int) (viewport * (viewport / (double) total)));
+            int knobY = cyTop + (int) ((viewport - knobH) * (scroll / maxScroll));
+            Draw.rect(ctx, barX, knobY, 2, knobH, Draw.CYAN);
+        }
+    }
+
+    private void renderToasts(DrawContext ctx, TextRenderer tr) {
+        int space = this.height - (py + ph);
+        if (space < 52) return;
+        boolean sodium = FabricLoader.getInstance().isModLoaded("sodium");
+        int ty = this.height - 46;
+
+        Draw.round(ctx, 8, ty, 170, 40, Draw.PANEL);
+        Draw.outline(ctx, 8, ty, 170, 40, 0xAA0B7FA8);
+        Draw.bolt(ctx, 14, ty + 8, 20, Draw.CYAN);
+        Draw.text(ctx, tr, "Supersonic Engine Active", 40, ty + 5, Draw.CYAN);
+        Draw.scaled(ctx, tr, "Renderer: " + (sodium ? "Sodium" : "Vanilla"), 40, ty + 17, Draw.GRAY, 0.8f);
+        Draw.scaled(ctx, tr, "Smart Sprint: " + (SupersonicClient.CONFIG.smartSprint ? "ON" : "OFF"), 40, ty + 26, Draw.GRAY, 0.8f);
+
+        int rx = this.width - 148;
+        Draw.round(ctx, rx, ty + 8, 140, 32, Draw.PANEL);
+        Draw.outline(ctx, rx, ty + 8, 140, 32, 0xAA0B7FA8);
+        Draw.bolt(ctx, rx + 6, ty + 14, 18, Draw.CYAN);
+        Draw.text(ctx, tr, "Supersonic Client", rx + 30, ty + 14, Draw.CYAN);
+        Draw.scaled(ctx, tr, "Ready to dominate.", rx + 30, ty + 26, Draw.GRAY, 0.8f);
+    }
+
+    // ------------------------------------------------------------------- input
+
+    @Override
+    public boolean mouseClicked(double mx, double my, int button) {
+        if (super.mouseClicked(mx, my, button)) return true; // search box
+        search.setFocused(false);
+
+        if (button == 0) {
+            for (Btn b : buttons) {
+                if (mx >= b.x && mx < b.x + b.w && my >= b.y && my < b.y + b.h) {
+                    b.action.run();
+                    return true;
+                }
+            }
+            Tab[] tabs = Tab.values();
+            for (int i = 0; i < tabs.length; i++) {
+                int ty = sideY + i * (itemH + 2);
+                if (mx >= sideX && mx < sideX + sideW && my >= ty && my < ty + itemH) {
+                    tab = tabs[i];
+                    scroll = 0;
+                    if (searching()) {
+                        searchText = "";
+                        search.setText("");
+                    }
+                    return true;
+                }
+            }
+        }
+
+        if (mx >= cx && mx < cx + cw && my >= cyTop && my < cyBottom) {
+            for (Row r : currentRows()) {
+                if (r.click(mx, my, button)) {
+                    if (r instanceof Rows.Slider) dragRow = r;
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        if (tab == Tab.MODS) {
-            modScroll -= (int) Math.signum(verticalAmount) * 2;
+    public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+        if (dragRow != null && button == 0) {
+            dragRow.drag(mx);
             return true;
         }
-        return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+        return super.mouseDragged(mx, my, button, dx, dy);
+    }
+
+    @Override
+    public boolean mouseReleased(double mx, double my, int button) {
+        dragRow = null;
+        return super.mouseReleased(mx, my, button);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mx, double my, double horizontalAmount, double verticalAmount) {
+        if (mx >= cx && mx < cx + cw && my >= cyTop && my < cyBottom) {
+            scroll -= verticalAmount * 20;
+            return true;
+        }
+        return super.mouseScrolled(mx, my, horizontalAmount, verticalAmount);
+    }
+
+    @Override
+    public boolean shouldPause() {
+        return false;
     }
 
     @Override
@@ -354,41 +356,6 @@ public class SupersonicScreen extends Screen {
 
     @Override
     public void close() {
-        this.client.setScreen(parent);
-    }
-
-    // ------------------------------------------------------------ slider widget
-
-    private static class FloatSlider extends SliderWidget {
-        private final String label;
-        private final float min;
-        private final float max;
-        private final String format;
-        private final Consumer<Float> setter;
-
-        FloatSlider(int x, int y, int width, String label, float min, float max, float current,
-                    String format, Consumer<Float> setter) {
-            super(x, y, width, 20, Text.empty(), (current - min) / (max - min));
-            this.label = label;
-            this.min = min;
-            this.max = max;
-            this.format = format;
-            this.setter = setter;
-            this.updateMessage();
-        }
-
-        private float real() {
-            return min + (float) ((max - min) * this.value);
-        }
-
-        @Override
-        protected void updateMessage() {
-            this.setMessage(Text.literal(label + ": " + String.format(Locale.ROOT, format, real())));
-        }
-
-        @Override
-        protected void applyValue() {
-            setter.accept(real());
-        }
+        mc.setScreen(parent);
     }
 }
