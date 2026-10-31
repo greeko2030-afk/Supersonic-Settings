@@ -3,7 +3,6 @@ package net.supersonic.mixin;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.hud.DebugHud;
-import net.supersonic.SupersonicClient;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -13,14 +12,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/** Adds the "Supersonic Engine" block to the left side of the F3 debug screen. */
+/** Adds the fixed "Supersonic Engine" block to the left side of the F3 debug screen (cannot be turned off). */
 @Mixin(DebugHud.class)
 public abstract class DebugHudMixin {
 
     @Inject(method = "getLeftText", at = @At("RETURN"))
     private void supersonic$addEngineInfo(CallbackInfoReturnable<List<String>> cir) {
-        if (SupersonicClient.CONFIG == null || !SupersonicClient.CONFIG.f3Info) return;
-
         List<String> list = cir.getReturnValue();
         MinecraftClient mc = MinecraftClient.getInstance();
 
