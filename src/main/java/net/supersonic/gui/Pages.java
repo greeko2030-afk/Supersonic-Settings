@@ -184,7 +184,6 @@ public final class Pages {
         r.add(slider("Chat Scale", "Size of chat text.", o.getChatScale(), 0, 1, 0.05, PCT));
         r.add(slider("Chat Line Spacing", "Space between chat lines.", o.getChatLineSpacing(), 0, 1, 0.05, PCT));
         r.add(new Rows.Header("CONNECTION"));
-        r.add(toggle("Allow Server Listings", "Show your name in server player lists.", o.getAllowServerListings()));
         r.add(new Rows.Info("Current Server", "The server you are connected to.", () -> {
             ServerInfo s = mc.getCurrentServerEntry();
             if (s != null) return s.address;
