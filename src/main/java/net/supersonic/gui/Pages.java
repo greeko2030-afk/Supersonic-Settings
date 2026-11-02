@@ -12,12 +12,15 @@ import net.minecraft.client.option.ParticlesMode;
 import net.minecraft.client.option.SimpleOption;
 import net.minecraft.client.network.ServerInfo;
 import net.minecraft.sound.SoundCategory;
+import net.minecraft.text.Text;
 import net.minecraft.util.Util;
 import net.supersonic.SupersonicClient;
 import net.supersonic.SupersonicConfig;
 import net.supersonic.gui.Rows.Row;
+import net.supersonic.voice.VoiceManager;
 
 import java.io.File;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -44,9 +47,16 @@ public final class Pages {
         map.put(Tab.HUD, hud());
         map.put(Tab.AUDIO, audio(mc));
         map.put(Tab.MULTIPLAYER, multiplayer(mc));
+        map.put(Tab.VOICE, voice(mc));
         map.put(Tab.CONTROLS, controls(mc, screen));
         map.put(Tab.MODS, mods(screen));
-        map.put(Tab.CAPTURE, capture(mc));
+
+        List<List<Row>> subs = captureSubs(mc);
+        screen.captureSubs.clear();
+        screen.captureSubs.addAll(subs);
+        List<Row> flat = new ArrayList<>();
+        for (List<Row> l : subs) flat.addAll(l);
+        map.put(Tab.CAPTURE, flat);
         return map;
     }
 
@@ -242,22 +252,167 @@ public final class Pages {
         return r;
     }
 
-    private static List<Row> capture(MinecraftClient mc) {
+    private static List<Row> voice(MinecraftClient mc) {
+        SupersonicConfig c = SupersonicClient.CONFIG;
         List<Row> r = new ArrayList<>();
-        r.add(new Rows.Header("FOLDERS"));
-        r.add(folder("Screenshots", "Open the screenshots folder.", "screenshots"));
-        r.add(folder("Worlds", "Open the saves folder.", "saves"));
-        r.add(folder("Resource Packs", "Open the resource packs folder.", "resourcepacks"));
-        r.add(folder("Shader Packs", "Open the shader packs folder.", "shaderpacks"));
-        r.add(folder("Mods", "Open the mods folder.", "mods"));
-        r.add(folder("Logs", "Open the logs folder.", "logs"));
-        r.add(folder("Config", "Open the config folder.", "config"));
-        r.add(new Rows.Header("REPLAY"));
-        r.add(new Rows.Info("Replay Mod", "Detected automatically if installed.",
-                () -> FabricLoader.getInstance().isModLoaded("replaymod") ? "Installed" : "Not installed",
-                FabricLoader.getInstance().isModLoaded("replaymod") ? Draw.GREEN : Draw.GRAY, null));
-        r.add(folder("Replays", "Open the replay recordings folder.", "replay_recordings"));
+        r.add(new Rows.Header("VOICE CHAT"));
+        r.add(new Rows.Toggle("Voice Hotkey Enabled", "Allow Left Shift + V to turn the microphone on/off.",
+                () -> c.voiceEnabled, v -> c.voiceEnabled = v));
+        r.add(new Rows.Toggle("Microphone", "Turn the microphone on or off right now.",
+                VoiceManager::isOn, v -> {
+                    if (v != VoiceManager.isOn()) VoiceManager.toggle();
+                }).noRevert());
+        r.add(new Rows.Cycle("Speech Language", "Languages installed in Windows. Applies next time the mic starts.",
+                () -> c.voiceLang.isEmpty() ? "Auto" : c.voiceLang,
+                v -> c.voiceLang = "Auto".equals(v) ? "" : (String) v,
+                VoiceManager::languages, v -> String.valueOf(v)));
+        r.add(new Rows.Slider("Voice Detection", "How easily the animation reacts to your voice.", 0.0, 1.0, 0.05,
+                () -> (double) c.voiceSensitivity, v -> c.voiceSensitivity = v.floatValue(), PCT));
+        r.add(new Rows.Slider("Silence Delay", "Pause that ends a sentence. Applies next time the mic starts.", 300, 2000, 100,
+                () -> (double) c.voiceSilenceMs, v -> c.voiceSilenceMs = (int) Math.round(v),
+                v -> String.format(Locale.ROOT, "%.0f ms", v)));
+        r.add(new Rows.Slider("Minimum Confidence", "Ignore words the engine is unsure about.", 0.0, 1.0, 0.05,
+                () -> (double) c.voiceMinConfidence, v -> c.voiceMinConfidence = v.floatValue(), PCT));
+        r.add(new Rows.Toggle("Show Voice Animation", "Animated bar at the top while the mic is on.",
+                () -> c.voiceAnimation, v -> c.voiceAnimation = v));
+
+        r.add(new Rows.Header("AUTOMATION"));
+        r.add(new Rows.Toggle("Auto-Run Commands", "In singleplayer or as OP, spoken commands run on the server.",
+                () -> c.voiceAutoCommands, v -> c.voiceAutoCommands = v));
+        r.add(new Rows.TextInput("Command Trigger Word", "Say this word first to force a command.", false,
+                () -> c.voiceCommandWord, v -> c.voiceCommandWord = v));
+
+        r.add(new Rows.Header("SPEECH ENGINE"));
+        r.add(new Rows.Info("Engine", "Built into Windows. No internet or account needed.",
+                () -> VoiceManager.isWindows() ? "Windows (offline)" : "Windows only",
+                VoiceManager.isWindows() ? Draw.GREEN : Draw.RED, null));
+        r.add(new Rows.Info("Status", "Current microphone state.", VoiceManager::status, Draw.CYAN, null));
+        r.add(new Rows.Button("Windows Mic Settings", "Make sure desktop apps may use the microphone.", "Open",
+                () -> openUrl("ms-settings:privacy-microphone")));
         return r;
+    }
+
+    private static List<List<Row>> captureSubs(MinecraftClient mc) {
+        SupersonicConfig c = SupersonicClient.CONFIG;
+        boolean rm = FabricLoader.getInstance().isModLoaded("replaymod");
+        List<List<Row>> subs = new ArrayList<>();
+
+        // REPLAY
+        List<Row> replay = new ArrayList<>();
+        replay.add(new Rows.Header("REPLAY SETTINGS"));
+        replay.add(new Rows.Info("Replay Mod", "Recording and playback are done by Replay Mod.",
+                () -> rm ? "Installed" : "Not installed", rm ? Draw.GREEN : Draw.GRAY, null));
+        replay.add(new Rows.Info("Replays Saved", "Files in the replay_recordings folder.",
+                () -> String.valueOf(CaptureTools.files("replay_recordings", ".mcpr").size()), Draw.WHITE, null));
+        replay.add(new Rows.Info("Total Size", "Disk space used by replays.",
+                () -> CaptureTools.size(CaptureTools.totalSize("replay_recordings", ".mcpr")), Draw.WHITE, null));
+        replay.add(new Rows.Button("Open Replays Folder", "Open the replay_recordings folder.", "Open",
+                () -> openFolder("replay_recordings")));
+        replay.add(new Rows.Button("Delete Old Replays", "Delete replays older than 30 days.", "Delete",
+                () -> {
+                    int n = CaptureTools.deleteOlderThan("replay_recordings", ".mcpr", 30);
+                    VoiceManager.notifyPlayer("Deleted " + n + " old replay file(s).");
+                }));
+        replay.add(new Rows.Button("Get Replay Mod", "Download Replay Mod for recording and playback.", "Open",
+                () -> openUrl("https://www.replaymod.com")));
+        replay.add(new Rows.Header("REPLAY SHORTCUTS"));
+        int shown = 0;
+        for (KeyBinding kb : mc.options.allKeys) {
+            if (shown >= 12) break;
+            if (kb.getTranslationKey().startsWith("replaymod.")) {
+                final KeyBinding k = kb;
+                replay.add(new Rows.Info(Text.translatable(kb.getTranslationKey()).getString(), "Replay Mod keybind.",
+                        () -> k.getBoundKeyLocalizedText().getString(), Draw.WHITE, null));
+                shown++;
+            }
+        }
+        if (shown == 0) {
+            replay.add(new Rows.Info("No Replay Mod keybinds", "Install Replay Mod to see its shortcuts here.",
+                    () -> "-", Draw.GRAY, null));
+        }
+        subs.add(replay);
+
+        // RECORDING
+        List<Row> rec = new ArrayList<>();
+        rec.add(new Rows.Header("SCREEN RECORDING"));
+        rec.add(new Rows.Info("Built-in Recorder", "Minecraft has no video recorder; use OBS or a similar tool.",
+                () -> "Not available", Draw.GRAY, null));
+        rec.add(new Rows.Button("Get OBS Studio", "Free screen recorder and streaming software.", "Open",
+                () -> openUrl("https://obsproject.com")));
+        rec.add(new Rows.Button("Open Game Folder", "Open the main Minecraft folder.", "Open",
+                () -> openFolder("")));
+        subs.add(rec);
+
+        // SCREENSHOT
+        List<Row> shot = new ArrayList<>();
+        shot.add(new Rows.Header("SCREENSHOT"));
+        shot.add(new Rows.Button("Take Screenshot", "Closes this menu, then saves a screenshot.", "Capture",
+                () -> CaptureTools.requestScreenshot(mc)));
+        shot.add(new Rows.Toggle("Hide HUD in Screenshot", "Hide the HUD for the shot, then bring it back.",
+                () -> c.screenshotHideHud, v -> c.screenshotHideHud = v));
+        shot.add(new Rows.Info("Screenshots Saved", "Files in the screenshots folder.",
+                () -> String.valueOf(CaptureTools.files("screenshots", ".png").size()), Draw.WHITE, null));
+        shot.add(new Rows.Info("Total Size", "Disk space used by screenshots.",
+                () -> CaptureTools.size(CaptureTools.totalSize("screenshots", ".png")), Draw.WHITE, null));
+        shot.add(new Rows.Button("Open Screenshots Folder", "Open the screenshots folder.", "Open",
+                () -> openFolder("screenshots")));
+        shot.add(new Rows.Button("Delete Old Screenshots", "Delete screenshots older than 30 days.", "Delete",
+                () -> {
+                    int n = CaptureTools.deleteOlderThan("screenshots", ".png", 30);
+                    VoiceManager.notifyPlayer("Deleted " + n + " old screenshot(s).");
+                }));
+        subs.add(shot);
+
+        // CLIPBOARD
+        List<Row> clip = new ArrayList<>();
+        clip.add(new Rows.Header("COPY TO CLIPBOARD"));
+        clip.add(new Rows.Button("Copy Coordinates", "Copies your X Y Z position.", "Copy", () -> {
+            if (mc.player != null) {
+                CaptureTools.copy(mc, String.format(Locale.ROOT, "%.0f %.0f %.0f",
+                        mc.player.getX(), mc.player.getY(), mc.player.getZ()));
+            }
+        }));
+        clip.add(new Rows.Button("Copy Teleport Command", "Copies a /tp command to your position.", "Copy", () -> {
+            if (mc.player != null) {
+                CaptureTools.copy(mc, String.format(Locale.ROOT, "/tp @s %.1f %.1f %.1f",
+                        mc.player.getX(), mc.player.getY(), mc.player.getZ()));
+            }
+        }));
+        clip.add(new Rows.Button("Copy Facing", "Copies your yaw and pitch.", "Copy", () -> {
+            if (mc.player != null) {
+                CaptureTools.copy(mc, String.format(Locale.ROOT, "%.1f %.1f", mc.player.getYaw(), mc.player.getPitch()));
+            }
+        }));
+        clip.add(new Rows.Info("Last Copied", "The last text this menu copied.",
+                () -> CaptureTools.lastCopied.isEmpty() ? "-" : CaptureTools.lastCopied, Draw.WHITE, null));
+        subs.add(clip);
+
+        // LIVE STREAM
+        List<Row> live = new ArrayList<>();
+        live.add(new Rows.Header("LIVE STREAM"));
+        live.add(new Rows.Info("Built-in Streaming", "Minecraft cannot stream by itself.",
+                () -> "Not available", Draw.GRAY, null));
+        live.add(new Rows.Button("Get OBS Studio", "Use OBS to go live on Twitch or YouTube.", "Open",
+                () -> openUrl("https://obsproject.com")));
+        subs.add(live);
+
+        return subs;
+    }
+
+    static void openFolder(String dirName) {
+        File f = dirName.isEmpty()
+                ? FabricLoader.getInstance().getGameDir().toFile()
+                : CaptureTools.dir(dirName);
+        f.mkdirs();
+        Util.getOperatingSystem().open(f);
+    }
+
+    static void openUrl(String url) {
+        try {
+            Util.getOperatingSystem().open(URI.create(url));
+        } catch (Exception ignored) {
+            // no browser available
+        }
     }
 
     // ---------------------------------------------------------------- helpers

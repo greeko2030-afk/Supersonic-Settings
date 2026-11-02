@@ -24,6 +24,9 @@ public class SupersonicScreen extends Screen {
 
     public final List<ModContainer> mods = new ArrayList<>();
     public int selectedMod = 0;
+    public final List<List<Row>> captureSubs = new ArrayList<>();
+    public int captureSub = 0;
+    private static final String[] SUB_NAMES = {"REPLAY", "RECORDING", "SCREENSHOT", "CLIPBOARD", "LIVE STREAM"};
 
     private final Screen parent;
     private final MinecraftClient mc;
@@ -111,7 +114,19 @@ public class SupersonicScreen extends Screen {
     }
 
     private List<Row> currentRows() {
-        return searching() ? searchResults : pages.get(tab);
+        if (searching()) return searchResults;
+        if (tab == Tab.CAPTURE && !captureSubs.isEmpty()) {
+            return captureSubs.get(Math.max(0, Math.min(captureSub, captureSubs.size() - 1)));
+        }
+        return pages.get(tab);
+    }
+
+    private boolean hasSubTabs() {
+        return tab == Tab.CAPTURE && !searching();
+    }
+
+    private void updateTop() {
+        cyTop = py + 80 + (hasSubTabs() ? 22 : 0);
     }
 
     // --------------------------------------------------------------- buttons
@@ -150,6 +165,7 @@ public class SupersonicScreen extends Screen {
     public void render(DrawContext ctx, int mx, int my, float delta) {
         this.mouseX = mx;
         this.mouseY = my;
+        updateTop();
         buttons.clear();
         TextRenderer tr = this.textRenderer;
 
@@ -222,6 +238,19 @@ public class SupersonicScreen extends Screen {
         Draw.scaledShadow(ctx, tr, title.toUpperCase(Locale.ROOT), cx + (searching() ? 0 : 14), py + 48, Draw.WHITE, 1.3f);
         Draw.text(ctx, tr, sub, cx, py + 64, Draw.GRAY);
 
+        if (hasSubTabs()) {
+            int sw = cw / SUB_NAMES.length;
+            for (int i = 0; i < SUB_NAMES.length; i++) {
+                int bx = cx + i * sw;
+                boolean active = i == captureSub;
+                boolean hover = mx >= bx && mx < bx + sw - 3 && my >= py + 80 && my < py + 96;
+                Draw.round(ctx, bx, py + 80, sw - 3, 16, active ? 0xFF0F5C86 : (hover ? Draw.ROW_HOVER : Draw.ROW));
+                if (active) Draw.outline(ctx, bx, py + 80, sw - 3, 16, Draw.CYAN);
+                Draw.scaled(ctx, tr, SUB_NAMES[i], bx + (sw - 3) / 2 - (int) (tr.getWidth(SUB_NAMES[i]) * 0.8f / 2), py + 85,
+                        Draw.WHITE, 0.8f);
+            }
+        }
+
         List<Row> rows = currentRows();
         int total = 0;
         for (Row r : rows) total += r.height();
@@ -284,8 +313,20 @@ public class SupersonicScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
+        updateTop();
+        Rows.TextInput.FOCUS = null;
         if (super.mouseClicked(mx, my, button)) return true; // search box
         search.setFocused(false);
+
+        if (hasSubTabs() && button == 0 && my >= py + 80 && my < py + 96 && mx >= cx && mx < cx + cw) {
+            int sw = cw / SUB_NAMES.length;
+            int idx = (int) ((mx - cx) / sw);
+            if (idx >= 0 && idx < SUB_NAMES.length) {
+                captureSub = idx;
+                scroll = 0;
+                return true;
+            }
+        }
 
         if (button == 0) {
             for (Btn b : buttons) {
@@ -300,6 +341,7 @@ public class SupersonicScreen extends Screen {
                 if (mx >= sideX && mx < sideX + sideW && my >= ty && my < ty + itemH) {
                     tab = tabs[i];
                     scroll = 0;
+                    Rows.TextInput.FOCUS = null;
                     if (searching()) {
                         searchText = "";
                         search.setText("");
@@ -337,11 +379,24 @@ public class SupersonicScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mx, double my, double horizontalAmount, double verticalAmount) {
+        updateTop();
         if (mx >= cx && mx < cx + cw && my >= cyTop && my < cyBottom) {
             scroll -= verticalAmount * 20;
             return true;
         }
         return super.mouseScrolled(mx, my, horizontalAmount, verticalAmount);
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (Rows.TextInput.handleKey(keyCode, modifiers)) return true;
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean charTyped(char chr, int modifiers) {
+        if (Rows.TextInput.handleChar(chr)) return true;
+        return super.charTyped(chr, modifiers);
     }
 
     @Override

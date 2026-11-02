@@ -20,6 +20,7 @@ import net.supersonic.SupersonicClient;
 import net.supersonic.SupersonicConfig;
 import net.supersonic.hud.FrameStats;
 import net.supersonic.hud.HudRenderer;
+import net.supersonic.voice.VoiceManager;
 import org.lwjgl.opengl.GL11;
 
 import java.io.File;
@@ -56,6 +57,8 @@ public final class Panels {
             case HUD -> hud(s, ctx, tr, x, y, w, h);
             case AUDIO -> audio(s, ctx, tr, x, y, w, h, mx, my);
             case MULTIPLAYER -> multiplayer(s, ctx, tr, x, y, w, h, mx, my);
+            case VOICE -> voice(s, ctx, tr, x, y, w, h, mx, my);
+            case CAPTURE -> capture(s, ctx, tr, x, y, w, h, mx, my);
             case CONTROLS -> controls(s, ctx, tr, x, y, w, h, mx, my);
             case MODS -> mods(s, ctx, tr, x, y, w, h, mx, my);
             default -> engine(ctx, tr, x, y, w, h);
@@ -301,6 +304,125 @@ public final class Panels {
             mc.options.write();
         });
         Draw.scaled(ctx, tr, "Supersonic menu: Ctrl + R-Shift", x + 8, y + 100, Draw.GRAY, 0.8f);
+    }
+
+    private static void voice(SupersonicScreen s, DrawContext ctx, TextRenderer tr, int x, int y, int w, int h, int mx, int my) {
+        card(ctx, x, y, w, h);
+        Draw.text(ctx, tr, "VOICE CHAT", x + 8, y + 8, Draw.CYAN);
+
+        boolean on = VoiceManager.isOn();
+        Draw.round(ctx, x + 8, y + 24, w - 16, 26, on ? 0xFF0F5C86 : Draw.ROW);
+        Draw.outline(ctx, x + 8, y + 24, w - 16, 26, on ? Draw.CYAN : Draw.CYAN_DIM);
+        Draw.centered(ctx, tr, on ? "MIC ON" : "MIC OFF", x + w / 2, y + 33, on ? Draw.WHITE : Draw.GRAY);
+
+        // Live level meter (real microphone level)
+        int mxl = x + 8;
+        int myl = y + 58;
+        int mw = w - 16;
+        Draw.rect(ctx, mxl, myl, mw, 6, 0xFF1A2A3C);
+        int filled = (int) (mw * Math.min(1f, VoiceManager.level()));
+        for (int i = 0; i < filled; i++) {
+            float u = i / (float) Math.max(1, mw - 1);
+            int r = (int) (0x4F + (0xB4 - 0x4F) * u);
+            int g = (int) (0x8F + (0x8C - 0x8F) * u);
+            int b = (int) (0xF0 + (0xF5 - 0xF0) * u);
+            ctx.fill(mxl + i, myl, mxl + i + 1, myl + 6, 0xFF000000 | (r << 16) | (g << 8) | b);
+        }
+        Draw.scaled(ctx, tr, "Status: " + VoiceManager.status(), x + 8, y + 70, Draw.GRAY, 0.8f);
+
+        int ly = y + 86;
+        Draw.text(ctx, tr, "LAST HEARD", x + 8, ly, Draw.CYAN);
+        ly += 12;
+        String heard = VoiceManager.lastHeard();
+        if (heard.isEmpty()) {
+            Draw.scaled(ctx, tr, "Nothing yet.", x + 8, ly, Draw.GRAY, 0.85f);
+            ly += 11;
+        } else {
+            for (String line : Draw.wrap(tr, heard, (int) ((w - 16) / 0.85f), 4)) {
+                Draw.scaled(ctx, tr, line, x + 8, ly, Draw.WHITE, 0.85f);
+                ly += 10;
+            }
+        }
+
+        int by = y + h - 62;
+        if (by > ly + 4) {
+            s.drawButton(ctx, x + 8, by, w - 16, 18, on ? "Turn Mic Off" : "Turn Mic On", true, mx, my, VoiceManager::toggle);
+            Draw.scaled(ctx, tr, "Hotkey: Left Shift + V", x + 8, by + 24, Draw.GRAY, 0.8f);
+            Draw.scaled(ctx, tr, "Singleplayer / OP: commands run", x + 8, by + 34, Draw.GRAY, 0.75f);
+            Draw.scaled(ctx, tr, "on the server automatically.", x + 8, by + 43, Draw.GRAY, 0.75f);
+        }
+    }
+
+    private static void capture(SupersonicScreen s, DrawContext ctx, TextRenderer tr, int x, int y, int w, int h, int mx, int my) {
+        card(ctx, x, y, w, h);
+        int sub = s.captureSub;
+        String title;
+        String dir;
+        String ext;
+        switch (sub) {
+            case 0 -> {
+                title = "REPLAY MANAGEMENT";
+                dir = "replay_recordings";
+                ext = ".mcpr";
+            }
+            case 2 -> {
+                title = "RECENT SCREENSHOTS";
+                dir = "screenshots";
+                ext = ".png";
+            }
+            default -> {
+                title = sub == 3 ? "CLIPBOARD" : (sub == 1 ? "RECORDING" : "LIVE STREAM");
+                dir = null;
+                ext = null;
+            }
+        }
+        Draw.text(ctx, tr, title, x + 8, y + 8, Draw.CYAN);
+
+        if (dir == null) {
+            int ly = y + 26;
+            if (sub == 3) {
+                Draw.scaled(ctx, tr, "Last copied:", x + 8, ly, Draw.GRAY, 0.8f);
+                ly += 11;
+                String last = CaptureTools.lastCopied.isEmpty() ? "-" : CaptureTools.lastCopied;
+                for (String line : Draw.wrap(tr, last, (int) ((w - 16) / 0.9f), 4)) {
+                    Draw.scaled(ctx, tr, line, x + 8, ly, Draw.WHITE, 0.9f);
+                    ly += 10;
+                }
+            } else {
+                for (String line : Draw.wrap(tr, "Minecraft has no built-in video recorder or streamer. OBS Studio is free and works great with it.", (int) ((w - 16) / 0.85f), 6)) {
+                    Draw.scaled(ctx, tr, line, x + 8, ly, Draw.GRAY, 0.85f);
+                    ly += 10;
+                }
+                s.drawButton(ctx, x + 8, ly + 6, w - 16, 18, "Get OBS Studio", false, mx, my,
+                        () -> Pages.openUrl("https://obsproject.com"));
+            }
+            return;
+        }
+
+        final String dirName = dir;
+        s.drawButton(ctx, x + 8, y + 24, w - 16, 18, "Open Folder", false, mx, my, () -> Pages.openFolder(dirName));
+        int ly = y + 50;
+        List<File> list = CaptureTools.recent(dir, ext, 6);
+        if (list.isEmpty()) {
+            Draw.scaled(ctx, tr, "No files yet.", x + 8, ly, Draw.GRAY, 0.85f);
+        }
+        for (File f : list) {
+            if (ly + 24 > y + h) break;
+            Draw.round(ctx, x + 6, ly, w - 12, 22, Draw.ROW);
+            Draw.scaled(ctx, tr, tr.trimToWidth(f.getName(), (int) ((w - 24) / 0.85f)), x + 11, ly + 3, Draw.WHITE, 0.85f);
+            Draw.scaled(ctx, tr, CaptureTools.size(f.length()) + "  " + CaptureTools.date(f.lastModified()),
+                    x + 11, ly + 13, Draw.GRAY, 0.75f);
+            final File file = f;
+            if (sub == 2) {
+                s.drawButton(ctx, x + w - 26, ly + 3, 16, 16, "", false, mx, my, () -> Util.getOperatingSystem().open(file));
+                Draw.playTriangle(ctx, x + w - 21, ly + 7, 7, Draw.CYAN);
+            }
+            ly += 25;
+        }
+        if (sub == 0 && !FabricLoader.getInstance().isModLoaded("replaymod") && ly + 40 < y + h) {
+            Draw.scaled(ctx, tr, "Install Replay Mod to record", x + 8, ly + 6, Draw.GRAY, 0.8f);
+            Draw.scaled(ctx, tr, "and play back replays.", x + 8, ly + 16, Draw.GRAY, 0.8f);
+        }
     }
 
     private static void mods(SupersonicScreen s, DrawContext ctx, TextRenderer tr, int x, int y, int w, int h, int mx, int my) {

@@ -7,9 +7,10 @@ public enum Tab {
     HUD("HUD & Overlay", "Customize your in-game HUD and overlays.", 3),
     AUDIO("Audio", "Fine tune your in-game sound experience.", 4),
     MULTIPLAYER("Multiplayer", "Enhance your multiplayer experience.", 5),
+    VOICE("Voice Chat", "Speak to chat or run commands. Left Shift + V.", 9),
     CONTROLS("Controls", "Customize your keybinds and mouse settings.", 6),
     MODS("Mods & Addons", "See your installed mods and open folders.", 7),
-    CAPTURE("Replay & Capture", "Folders, screenshots and replay tools.", 8);
+    CAPTURE("Replay & Capture", "Record, review and share your best moments.", 8);
 
     public final String title;
     public final String subtitle;
