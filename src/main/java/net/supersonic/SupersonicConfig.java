@@ -47,6 +47,19 @@ public class SupersonicConfig {
     // Gameplay
     public boolean smartSprint = false;
 
+    // Voice chat (offline speech-to-text, Windows)
+    public boolean voiceEnabled = true;
+    public String voiceLang = "";
+    public float voiceSensitivity = 0.7f;
+    public int voiceSilenceMs = 700;
+    public float voiceMinConfidence = 0.30f;
+    public boolean voiceAutoCommands = true;
+    public String voiceCommandWord = "command";
+    public boolean voiceAnimation = true;
+
+    // Capture
+    public boolean screenshotHideHud = true;
+
     // HUD elements
     public boolean hudEnabled = true;
     public boolean showFps = true;
@@ -75,6 +88,11 @@ public class SupersonicConfig {
                 if (cfg != null) {
                     if (cfg.corner == null) cfg.corner = Corner.TOP_LEFT;
                     if (cfg.accent == null) cfg.accent = Accent.BLUE;
+                    if (cfg.voiceLang == null) cfg.voiceLang = "";
+                    if (cfg.voiceCommandWord == null) cfg.voiceCommandWord = "command";
+                    if (cfg.voiceSensitivity < 0f || cfg.voiceSensitivity > 1f) cfg.voiceSensitivity = 0.7f;
+                    if (cfg.voiceSilenceMs < 300 || cfg.voiceSilenceMs > 3000) cfg.voiceSilenceMs = 700;
+                    if (cfg.voiceMinConfidence < 0f || cfg.voiceMinConfidence > 1f) cfg.voiceMinConfidence = 0.30f;
                     if (cfg.hudScale < 0.5f || cfg.hudScale > 2.0f) cfg.hudScale = 1.0f;
                     if (cfg.bgOpacity < 0f || cfg.bgOpacity > 1f) cfg.bgOpacity = 0.56f;
                     return cfg;
