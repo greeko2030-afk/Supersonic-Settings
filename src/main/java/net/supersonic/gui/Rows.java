@@ -118,6 +118,12 @@ public final class Rows {
         private final Supplier<Boolean> get;
         private final Consumer<Boolean> set;
         private boolean original;
+        private boolean revertable = true;
+
+        public Toggle noRevert() {
+            this.revertable = false;
+            return this;
+        }
 
         public Toggle(String title, String desc, Supplier<Boolean> get, Consumer<Boolean> set) {
             super(title, desc);
@@ -158,7 +164,7 @@ public final class Rows {
 
         @Override
         public void revert() {
-            if (get.get() != original) set.accept(original);
+            if (revertable && get.get() != original) set.accept(original);
         }
     }
 
@@ -307,10 +313,14 @@ public final class Rows {
     }
 
     public static final class Button extends Row {
-        private final String label;
+        private final Supplier<String> label;
         private final Runnable action;
 
         public Button(String title, String desc, String label, Runnable action) {
+            this(title, desc, () -> label, action);
+        }
+
+        public Button(String title, String desc, Supplier<String> label, Runnable action) {
             super(title, desc);
             this.label = label;
             this.action = action;
@@ -322,7 +332,7 @@ public final class Rows {
             int bx = x + w - 84;
             Draw.round(ctx, bx, y + 4, 76, 16, 0xFF0F5C86);
             Draw.outline(ctx, bx, y + 4, 76, 16, Draw.CYAN);
-            Draw.centered(ctx, tr, label, bx + 38, y + 8, Draw.WHITE);
+            Draw.centered(ctx, tr, tr.trimToWidth(label.get(), 70), bx + 38, y + 8, Draw.WHITE);
         }
 
         @Override
@@ -400,6 +410,92 @@ public final class Rows {
                 return true;
             }
             return false;
+        }
+    }
+
+    /** Single-line text box. Keyboard input is routed here by the screen while it is focused. */
+    public static final class TextInput extends Row {
+        public static TextInput FOCUS = null;
+
+        private final Supplier<String> get;
+        private final Consumer<String> set;
+        private final boolean masked;
+        private String original;
+
+        public TextInput(String title, String desc, boolean masked, Supplier<String> get, Consumer<String> set) {
+            super(title, desc);
+            this.masked = masked;
+            this.get = get;
+            this.set = set;
+            this.original = get.get();
+        }
+
+        @Override
+        protected int controlWidth() {
+            return 160;
+        }
+
+        @Override
+        public void render(DrawContext ctx, TextRenderer tr, int x, int y, int w, int mx, int my) {
+            base(ctx, tr, x, y, w, mx, my);
+            int bx = x + w - 158;
+            boolean focused = FOCUS == this;
+            Draw.round(ctx, bx, y + 4, 150, 16, 0xFF0B1826);
+            Draw.outline(ctx, bx, y + 4, 150, 16, focused ? Draw.CYAN : Draw.CYAN_DIM);
+            String shown = get.get();
+            if (masked) shown = "*".repeat(Math.min(shown.length(), 40));
+            if (focused && (System.currentTimeMillis() / 500L) % 2L == 0L) shown = shown + "_";
+            String vis = tr.trimToWidth(shown, 138, true);
+            Draw.text(ctx, tr, vis, bx + 6, y + 8, Draw.WHITE);
+        }
+
+        @Override
+        public boolean click(double mx, double my, int button) {
+            if (button == 0 && over(mx, my)) {
+                FOCUS = this;
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public void capture() {
+            original = get.get();
+        }
+
+        @Override
+        public void revert() {
+            if (!original.equals(get.get())) set.accept(original);
+        }
+
+        public static boolean handleChar(char c) {
+            if (FOCUS == null || c < 32 || c == 127) return false;
+            String cur = FOCUS.get.get();
+            if (cur.length() < 200) FOCUS.set.accept(cur + c);
+            return true;
+        }
+
+        public static boolean handleKey(int keyCode, int mods) {
+            if (FOCUS == null) return false;
+            String cur = FOCUS.get.get();
+            if (keyCode == 259) { // backspace
+                if (!cur.isEmpty()) FOCUS.set.accept(cur.substring(0, cur.length() - 1));
+                return true;
+            }
+            if (keyCode == 257 || keyCode == 335 || keyCode == 256) { // enter / keypad enter / escape
+                FOCUS = null;
+                return true;
+            }
+            if (keyCode == 86 && (mods & 2) != 0) { // Ctrl+V
+                String clip = net.minecraft.client.MinecraftClient.getInstance().keyboard.getClipboard();
+                if (clip != null) {
+                    clip = clip.replace("\n", "").replace("\r", "").trim();
+                    if (clip.length() > 200) clip = clip.substring(0, 200);
+                    FOCUS.set.accept(clip);
+                }
+                return true;
+            }
+            return true; // swallow other keys while typing
         }
     }
 }
