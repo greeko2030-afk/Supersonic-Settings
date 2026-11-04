@@ -17,6 +17,8 @@ import net.minecraft.util.Util;
 import net.supersonic.SupersonicClient;
 import net.supersonic.SupersonicConfig;
 import net.supersonic.gui.Rows.Row;
+import net.supersonic.voice.MicCapture;
+import net.supersonic.voice.ModelManager;
 import net.supersonic.voice.VoiceManager;
 
 import java.io.File;
@@ -262,19 +264,43 @@ public final class Pages {
                 VoiceManager::isOn, v -> {
                     if (v != VoiceManager.isOn()) VoiceManager.toggle();
                 }).noRevert());
-        r.add(new Rows.Cycle("Speech Language", "Languages installed in Windows. Applies next time the mic starts.",
+        r.add(new Rows.Cycle("Speech Engine", "Auto = Windows engine on Windows, offline model elsewhere. Applies next time the mic starts.",
+                () -> c.voiceEngine, v -> c.voiceEngine = (SupersonicConfig.VoiceEngine) v,
+                () -> SupersonicConfig.VoiceEngine.values(), v -> ((SupersonicConfig.VoiceEngine) v).label));
+        r.add(new Rows.Slider("Voice Detection", "How easily the animation reacts to your voice.", 0.0, 1.0, 0.05,
+                () -> (double) c.voiceSensitivity, v -> c.voiceSensitivity = v.floatValue(), PCT));
+        r.add(new Rows.Toggle("Show Voice Animation", "Animated bar at the top while the mic is on.",
+                () -> c.voiceAnimation, v -> c.voiceAnimation = v));
+
+        r.add(new Rows.Header("OFFLINE MODEL (VOSK)"));
+        r.add(new Rows.Cycle("Speech Model", "Language model. Put your own model folder in config/supersonic/vosk.",
+                () -> c.voiceVoskModel, v -> c.voiceVoskModel = (String) v,
+                ModelManager::choices, v -> String.valueOf(v)));
+        r.add(new Rows.Button("Download Speech Files", "Downloads the selected model (about 40 MB). Needs internet once.", "Download",
+                () -> ModelManager.downloadAsync(c.voiceVoskModel)));
+        r.add(new Rows.Info("Download Status", "Progress of the download.", ModelManager::status, Draw.CYAN, null));
+        r.add(new Rows.Info("Model Installed", "Is the selected model ready to use?",
+                () -> ModelManager.isInstalled(c.voiceVoskModel) ? "Yes" : "No",
+                Draw.WHITE, null));
+        r.add(new Rows.Info("Microphone Source", "Audio library used for the last recording.",
+                () -> MicCapture.lastSource, Draw.WHITE, null));
+        r.add(new Rows.Button("Open Model Folder", "Open config/supersonic/vosk.", "Open", () -> {
+            ModelManager.root().mkdirs();
+            Util.getOperatingSystem().open(ModelManager.root());
+        }));
+
+        r.add(new Rows.Header("WINDOWS ENGINE"));
+        r.add(new Rows.Cycle("Windows Speech Language", "Languages installed in Windows. Applies next time the mic starts.",
                 () -> c.voiceLang.isEmpty() ? "Auto" : c.voiceLang,
                 v -> c.voiceLang = "Auto".equals(v) ? "" : (String) v,
                 VoiceManager::languages, v -> String.valueOf(v)));
-        r.add(new Rows.Slider("Voice Detection", "How easily the animation reacts to your voice.", 0.0, 1.0, 0.05,
-                () -> (double) c.voiceSensitivity, v -> c.voiceSensitivity = v.floatValue(), PCT));
-        r.add(new Rows.Slider("Silence Delay", "Pause that ends a sentence. Applies next time the mic starts.", 300, 2000, 100,
+        r.add(new Rows.Slider("Silence Delay", "Pause that ends a sentence (Windows engine).", 300, 2000, 100,
                 () -> (double) c.voiceSilenceMs, v -> c.voiceSilenceMs = (int) Math.round(v),
                 v -> String.format(Locale.ROOT, "%.0f ms", v)));
-        r.add(new Rows.Slider("Minimum Confidence", "Ignore words the engine is unsure about.", 0.0, 1.0, 0.05,
+        r.add(new Rows.Slider("Minimum Confidence", "Ignore words the Windows engine is unsure about.", 0.0, 1.0, 0.05,
                 () -> (double) c.voiceMinConfidence, v -> c.voiceMinConfidence = v.floatValue(), PCT));
-        r.add(new Rows.Toggle("Show Voice Animation", "Animated bar at the top while the mic is on.",
-                () -> c.voiceAnimation, v -> c.voiceAnimation = v));
+        r.add(new Rows.Button("Windows Mic Settings", "Make sure desktop apps may use the microphone.", "Open",
+                () -> openUrl("ms-settings:privacy-microphone")));
 
         r.add(new Rows.Header("AUTOMATION"));
         r.add(new Rows.Toggle("Auto-Run Commands", "In singleplayer or as OP, spoken commands run on the server.",
@@ -282,13 +308,10 @@ public final class Pages {
         r.add(new Rows.TextInput("Command Trigger Word", "Say this word first to force a command.", false,
                 () -> c.voiceCommandWord, v -> c.voiceCommandWord = v));
 
-        r.add(new Rows.Header("SPEECH ENGINE"));
-        r.add(new Rows.Info("Engine", "Built into Windows. No internet or account needed.",
-                () -> VoiceManager.isWindows() ? "Windows (offline)" : "Windows only",
-                VoiceManager.isWindows() ? Draw.GREEN : Draw.RED, null));
+        r.add(new Rows.Header("STATUS"));
+        r.add(new Rows.Info("Active Engine", "The engine used when you turn the mic on.",
+                VoiceManager::engineName, Draw.GREEN, null));
         r.add(new Rows.Info("Status", "Current microphone state.", VoiceManager::status, Draw.CYAN, null));
-        r.add(new Rows.Button("Windows Mic Settings", "Make sure desktop apps may use the microphone.", "Open",
-                () -> openUrl("ms-settings:privacy-microphone")));
         return r;
     }
 
