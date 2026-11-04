@@ -260,6 +260,8 @@ public final class Pages {
         r.add(new Rows.Header("VOICE CHAT"));
         r.add(new Rows.Toggle("Voice Hotkey Enabled", "Allow Left Shift + V to turn the microphone on/off.",
                 () -> c.voiceEnabled, v -> c.voiceEnabled = v));
+        r.add(new Rows.Toggle("Require Left Shift", "Hotkey is Left Shift + V. Turn off to use V alone (also rebindable in Controls).",
+                () -> c.voiceRequireShift, v -> c.voiceRequireShift = v));
         r.add(new Rows.Toggle("Microphone", "Turn the microphone on or off right now.",
                 VoiceManager::isOn, v -> {
                     if (v != VoiceManager.isOn()) VoiceManager.toggle();
