@@ -2,9 +2,11 @@ package net.supersonic;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.entity.effect.StatusEffects;
 import net.supersonic.gui.CaptureTools;
@@ -25,12 +27,27 @@ public class SupersonicClient implements ClientModInitializer {
     public static volatile long lastF3Draw = -1L;
 
     private static boolean comboWasDown = false;
-    private static boolean voiceComboWasDown = false;
+    private static KeyBinding voiceKey;
+    private static volatile long lastShiftNs = Long.MIN_VALUE / 2;
+
+    /** Remembers when Left Shift was last seen down (called every frame, so short taps are not missed). */
+    public static void sampleKeys() {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc.getWindow() == null) return;
+        if (InputUtil.isKeyPressed(mc.getWindow().getHandle(), GLFW.GLFW_KEY_LEFT_SHIFT)) {
+            lastShiftNs = System.nanoTime();
+        }
+    }
 
     @Override
     public void onInitializeClient() {
         CONFIG = SupersonicConfig.load();
         VoiceManager.prefetchLanguages();
+
+        // Real key binding (event based): shows up in Controls and catches very short presses
+        voiceKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "key.supersonicsettings.voice", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_V,
+                "key.categories.supersonicsettings"));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             // Ctrl + Right Shift opens / closes the settings screen
@@ -46,14 +63,18 @@ public class SupersonicClient implements ClientModInitializer {
             comboWasDown = down;
 
             // Left Shift + V toggles the microphone (speech-to-text)
-            boolean lShift = InputUtil.isKeyPressed(window, GLFW.GLFW_KEY_LEFT_SHIFT);
-            boolean vKey = InputUtil.isKeyPressed(window, GLFW.GLFW_KEY_V);
-            boolean voiceDown = lShift && vKey;
-            if (voiceDown && !voiceComboWasDown && CONFIG.voiceEnabled
-                    && client.currentScreen == null && client.player != null) {
-                VoiceManager.toggle();
+            while (voiceKey.wasPressed()) {
+                if (!CONFIG.voiceEnabled) {
+                    VoiceManager.notifyPlayer("The voice hotkey is turned off in Supersonic Settings > Voice Chat.");
+                    continue;
+                }
+                boolean shiftOk = !CONFIG.voiceRequireShift
+                        || InputUtil.isKeyPressed(window, GLFW.GLFW_KEY_LEFT_SHIFT)
+                        || System.nanoTime() - lastShiftNs < 500_000_000L;
+                if (shiftOk && client.player != null) {
+                    VoiceManager.toggle();
+                }
             }
-            voiceComboWasDown = voiceDown;
 
             // Leaving the world turns the microphone off
             if (client.player == null && VoiceManager.isOn()) {

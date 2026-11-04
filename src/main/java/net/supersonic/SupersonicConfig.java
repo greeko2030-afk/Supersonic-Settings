@@ -61,6 +61,7 @@ public class SupersonicConfig {
 
     // Voice chat (offline speech-to-text, Windows)
     public boolean voiceEnabled = true;
+    public boolean voiceRequireShift = true;
     public String voiceLang = "";
     public float voiceSensitivity = 0.7f;
     public int voiceSilenceMs = 700;
