@@ -44,6 +44,18 @@ public class SupersonicConfig {
         }
     }
 
+    public enum VoiceEngine {
+        AUTO("Auto"),
+        WINDOWS("Windows (built-in)"),
+        VOSK("Offline Model (Vosk)");
+
+        public final String label;
+
+        VoiceEngine(String label) {
+            this.label = label;
+        }
+    }
+
     // Gameplay
     public boolean smartSprint = false;
 
@@ -56,6 +68,8 @@ public class SupersonicConfig {
     public boolean voiceAutoCommands = true;
     public String voiceCommandWord = "command";
     public boolean voiceAnimation = true;
+    public VoiceEngine voiceEngine = VoiceEngine.AUTO;
+    public String voiceVoskModel = "English (US)";
 
     // Capture
     public boolean screenshotHideHud = true;
@@ -84,8 +98,11 @@ public class SupersonicConfig {
     public static SupersonicConfig load() {
         try {
             if (Files.exists(FILE)) {
-                SupersonicConfig cfg = GSON.fromJson(Files.readString(FILE), SupersonicConfig.class);
+                String raw = Files.readString(FILE);
+                SupersonicConfig cfg = GSON.fromJson(raw, SupersonicConfig.class);
                 if (cfg != null) {
+                    if (cfg.voiceEngine == null) cfg.voiceEngine = VoiceEngine.AUTO;
+                    if (cfg.voiceVoskModel == null || cfg.voiceVoskModel.isBlank()) cfg.voiceVoskModel = "English (US)";
                     if (cfg.corner == null) cfg.corner = Corner.TOP_LEFT;
                     if (cfg.accent == null) cfg.accent = Accent.BLUE;
                     if (cfg.voiceLang == null) cfg.voiceLang = "";
