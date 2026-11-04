@@ -5,11 +5,8 @@ import net.minecraft.text.Text;
 import net.supersonic.SupersonicClient;
 import net.supersonic.SupersonicConfig;
 
-import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.DataLine;
-import javax.sound.sampled.TargetDataLine;
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -19,21 +16,20 @@ import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Offline speech-to-text using the speech recognizer that is built into Windows
- * (System.Speech, driven through a hidden PowerShell process). No internet, no API key.
- * A second thread listens to the microphone only to drive the animation.
+ * Voice chat controller. Two speech engines:
+ *  - VOSK: offline recognition inside the mod (works on Windows, Linux, macOS and Android launchers).
+ *  - WINDOWS: the recognizer built into Windows (System.Speech through a hidden PowerShell process).
  */
 public final class VoiceManager {
-    private static final AudioFormat FORMAT = new AudioFormat(16000f, 16, 1, true, false);
+    static volatile boolean running = false;
+    static volatile boolean speaking = false;
+    static volatile float level = 0f;
+    static volatile String status = "Mic off";
+    static volatile long processingUntil = 0L;
+    static volatile int session = 0;
 
-    private static volatile boolean running = false;
-    private static volatile boolean speaking = false;
-    private static volatile float level = 0f;
-    private static volatile String status = "Mic off";
     private static volatile String lastHeard = "";
     private static volatile long lastHeardAt = 0L;
-    private static volatile long processingUntil = 0L;
-    private static volatile int session = 0;
     private static volatile Process process = null;
     private static volatile String[] languages = {"Auto"};
     private static boolean hookAdded = false;
@@ -80,8 +76,28 @@ public final class VoiceManager {
         return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
     }
 
+    public static boolean isAndroidLike() {
+        return System.getenv("ANDROID_ROOT") != null
+                || System.getenv("POJAV_RENDERER") != null
+                || new File("/system/build.prop").exists();
+    }
+
     public static String[] languages() {
         return languages;
+    }
+
+    private static SupersonicConfig.VoiceEngine effectiveEngine() {
+        SupersonicConfig.VoiceEngine e = SupersonicClient.CONFIG.voiceEngine;
+        if (e == null || e == SupersonicConfig.VoiceEngine.AUTO) {
+            return isWindows() ? SupersonicConfig.VoiceEngine.WINDOWS : SupersonicConfig.VoiceEngine.VOSK;
+        }
+        return e;
+    }
+
+    public static String engineName() {
+        SupersonicConfig.VoiceEngine e = effectiveEngine();
+        if (e == SupersonicConfig.VoiceEngine.VOSK) return "Offline Model (Vosk)";
+        return isWindows() ? "Windows (built-in)" : "Windows only";
     }
 
     // ----------------------------------------------------------- control
@@ -93,11 +109,6 @@ public final class VoiceManager {
 
     public static synchronized void start() {
         if (running) return;
-        if (!isWindows()) {
-            status = "Windows only";
-            notifyPlayer("Offline speech recognition works on Windows only (for now).");
-            return;
-        }
         if (!hookAdded) {
             hookAdded = true;
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -105,7 +116,22 @@ public final class VoiceManager {
                 if (p != null) p.destroyForcibly();
             }));
         }
+
         final int my = ++session;
+        if (effectiveEngine() == SupersonicConfig.VoiceEngine.VOSK) {
+            running = true;
+            status = "Starting...";
+            Thread t = new Thread(() -> VoskEngine.run(my), "Supersonic-Voice-Vosk");
+            t.setDaemon(true);
+            t.start();
+            return;
+        }
+
+        if (!isWindows()) {
+            status = "Windows only";
+            notifyPlayer("The Windows engine only works on Windows. Choose \"Offline Model (Vosk)\" in Voice Chat.");
+            return;
+        }
         running = true;
         status = "Starting...";
 
@@ -128,6 +154,15 @@ public final class VoiceManager {
         level = 0f;
         status = "Mic off";
         notifyPlayer("Microphone OFF.");
+    }
+
+    /** Called by an engine thread when it ends. */
+    static void finish(int my, boolean failed) {
+        if (my != session) return;
+        running = false;
+        speaking = false;
+        level = 0f;
+        if (!failed) status = "Mic off";
     }
 
     // -------------------------------------------------- Windows recognizer
@@ -181,6 +216,7 @@ public final class VoiceManager {
 
     private static void recognizerLoop(int my) {
         Process p = null;
+        boolean failed = false;
         try {
             p = powershell(script(SupersonicClient.CONFIG)).start();
             process = p;
@@ -201,6 +237,7 @@ public final class VoiceManager {
                             MinecraftClient.getInstance().execute(() -> VoiceCommands.handle(text));
                         }
                     } else if (line.startsWith("ERR:")) {
+                        failed = true;
                         status = "Mic error";
                         notifyPlayer("Speech engine: " + line.substring(4)
                                 + " (Check Windows Settings > Privacy > Microphone.)");
@@ -209,35 +246,32 @@ public final class VoiceManager {
                 }
             }
         } catch (Throwable t) {
+            failed = true;
             status = "Mic error";
             notifyPlayer("Could not start speech recognition: " + (t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage()));
         } finally {
             if (p != null) p.destroy();
-            if (my == session) {
-                running = false;
-                speaking = false;
-                level = 0f;
-                if (!"Mic error".equals(status)) status = "Mic off";
-            }
+            finish(my, failed);
         }
     }
 
-    // ---------------------------------------------------- animation level
-
+    /** Microphone level for the animation (Windows engine only; Vosk measures it itself). */
     private static void levelLoop(int my) {
-        TargetDataLine line = null;
+        MicCapture mic = null;
         try {
-            DataLine.Info info = new DataLine.Info(TargetDataLine.class, FORMAT);
-            line = (TargetDataLine) AudioSystem.getLine(info);
-            line.open(FORMAT);
-            line.start();
-
-            byte[] buf = new byte[640]; // 20 ms
+            mic = MicCapture.open();
+            byte[] buf = new byte[640];
             long lastLoud = 0L;
             while (running && my == session) {
-                int n = line.read(buf, 0, buf.length);
+                int n = mic.read(buf);
                 if (n <= 0) continue;
-                double r = rms(buf, n);
+                int samples = n / 2;
+                long sum = 0L;
+                for (int i = 0; i < samples; i++) {
+                    int s = (short) ((buf[2 * i + 1] << 8) | (buf[2 * i] & 0xFF));
+                    sum += (long) s * s;
+                }
+                double r = samples == 0 ? 0.0 : Math.sqrt(sum / (double) samples) / 32768.0;
                 level = level * 0.6f + (float) Math.min(1.0, r * 8.0) * 0.4f;
 
                 double threshold = 0.05 - 0.045 * SupersonicClient.CONFIG.voiceSensitivity;
@@ -251,32 +285,14 @@ public final class VoiceManager {
                 }
             }
         } catch (Throwable ignored) {
-            // The animation just stays calm if Java cannot open the microphone.
+            // the animation just stays calm if no microphone can be opened here
         } finally {
-            if (line != null) {
-                try {
-                    line.stop();
-                    line.close();
-                } catch (Throwable ignored) {
-                    // already closed
-                }
-            }
+            if (mic != null) mic.close();
             if (my == session) {
                 speaking = false;
                 level = 0f;
             }
         }
-    }
-
-    private static double rms(byte[] b, int n) {
-        int samples = n / 2;
-        if (samples == 0) return 0.0;
-        long sum = 0L;
-        for (int i = 0; i < samples; i++) {
-            int s = (short) ((b[2 * i + 1] << 8) | (b[2 * i] & 0xFF));
-            sum += (long) s * s;
-        }
-        return Math.sqrt(sum / (double) samples) / 32768.0;
     }
 
     // ------------------------------------------------------------ languages
