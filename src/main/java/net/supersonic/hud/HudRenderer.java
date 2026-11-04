@@ -29,13 +29,15 @@ public final class HudRenderer {
     public static void render(DrawContext ctx, RenderTickCounter tickCounter) {
         MinecraftClient mc = MinecraftClient.getInstance();
         FrameStats.frame();
+        SupersonicClient.sampleKeys();
         CpsCounter.poll(mc.getWindow().getHandle());
 
         SupersonicConfig cfg = SupersonicClient.CONFIG;
         if (cfg == null || !cfg.hudEnabled) return;
         if (mc.player == null || mc.world == null) return;
         if (mc.options.hudHidden) return;
-        if (mc.inGameHud.getDebugHud().shouldShowDebugHud()) return; // F3 is open
+        long f3 = SupersonicClient.lastF3Draw;
+        if (f3 != -1L && System.nanoTime() - f3 < 300_000_000L) return; // F3 is open
 
         List<String> lines = buildLines(mc, cfg);
         if (lines.isEmpty() && !cfg.showArmor) return;
@@ -158,6 +160,7 @@ public final class HudRenderer {
             for (int i = 0; i < ARMOR.length; i++) {
                 ItemStack stack = mc.player.getEquippedStack(ARMOR[i]);
                 if (!stack.isEmpty()) {
+                    ctx.drawItem(stack, 7 + i * 18, ay);
                     ctx.drawItemInSlot(tr, stack, 7 + i * 18, ay);
                 }
             }
