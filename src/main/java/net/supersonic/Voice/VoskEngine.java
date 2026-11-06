@@ -11,9 +11,16 @@ import org.vosk.Model;
 import org.vosk.Recognizer;
 
 import java.io.File;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.nio.file.Files;
 
 /** Offline speech recognition with Vosk. Runs on its own thread, fed by MicCapture. */
 final class VoskEngine {
+    private static boolean nativeReady = false;
+    /** The first native-library failure. A failed LibVosk can never be loaded again in the same game session. */
+    private static String initFailure = null;
+
     private VoskEngine() {
     }
 
@@ -30,10 +37,18 @@ final class VoskEngine {
                         + "\" is not installed. Open Supersonic Settings > Voice Chat > Download Speech Files.");
                 return;
             }
-            VoiceManager.status = "Loading speech engine...";
-            ModelManager.prepareNatives();
-            LibVosk.setLogLevel(LogLevel.WARNINGS);
 
+            VoiceManager.status = "Preparing speech library...";
+            String err = initNative();
+            if (err != null) {
+                failed = true;
+                VoiceManager.status = "Speech library error";
+                VoiceManager.notifyPlayer("Speech library failed: " + err);
+                VoiceManager.notifyPlayer("Details saved in config/supersonic/vosk-error.log");
+                return;
+            }
+
+            VoiceManager.status = "Loading speech model...";
             try (Model model = new Model(dir.getAbsolutePath());
                  Recognizer rec = new Recognizer(model, 16000f)) {
                 mic = MicCapture.open();
@@ -68,12 +83,67 @@ final class VoskEngine {
         } catch (Throwable t) {
             failed = true;
             VoiceManager.status = "Speech error";
-            String m = t.getMessage() == null ? t.getClass().getSimpleName() : t.getClass().getSimpleName() + ": " + t.getMessage();
-            VoiceManager.notifyPlayer("Offline speech failed: " + (m.length() > 150 ? m.substring(0, 150) : m));
+            writeLog(t);
+            VoiceManager.notifyPlayer("Offline speech failed: " + describe(t));
+            VoiceManager.notifyPlayer("Details saved in config/supersonic/vosk-error.log");
             SupersonicClient.LOGGER.warn("Vosk engine failed", t);
         } finally {
             if (mic != null) mic.close();
             VoiceManager.finish(my, failed);
+        }
+    }
+
+    /** Loads the native library once. Returns null on success, otherwise the reason. */
+    private static synchronized String initNative() {
+        if (nativeReady) return null;
+        if (initFailure != null) return initFailure + " (restart the game after fixing this)";
+        try {
+            ModelManager.prepareNatives();
+            LibVosk.setLogLevel(LogLevel.WARNINGS);
+            nativeReady = true;
+            return null;
+        } catch (Throwable t) {
+            initFailure = describe(t);
+            writeLog(t);
+            SupersonicClient.LOGGER.warn("Vosk native library failed", t);
+            return initFailure;
+        }
+    }
+
+    /** "SomeError: message" of the deepest cause, short enough for the chat. */
+    private static String describe(Throwable t) {
+        Throwable root = t;
+        int guard = 0;
+        while (root.getCause() != null && root.getCause() != root && guard++ < 10) root = root.getCause();
+        String m = root.getMessage() == null ? "" : ": " + root.getMessage().replace('\n', ' ');
+        String s = root.getClass().getSimpleName() + m;
+        return s.length() > 170 ? s.substring(0, 170) : s;
+    }
+
+    private static void writeLog(Throwable t) {
+        try {
+            StringWriter sw = new StringWriter();
+            PrintWriter pw = new PrintWriter(sw);
+            pw.println("Supersonic voice (Vosk) error");
+            pw.println("os.name=" + System.getProperty("os.name") + "  os.arch=" + System.getProperty("os.arch"));
+            pw.println("java.version=" + System.getProperty("java.version") + "  vm=" + System.getProperty("java.vm.name"));
+            pw.println("android-like=" + VoiceManager.isAndroidLike());
+            pw.println("natives dir=" + ModelManager.nativesDir());
+            pw.println("jna.library.path=" + System.getProperty("jna.library.path"));
+            pw.println("jna.boot.library.path=" + System.getProperty("jna.boot.library.path"));
+            File nd = ModelManager.nativesDir();
+            File[] list = nd.listFiles();
+            if (list != null) {
+                for (File f : list) pw.println("  " + f.getName() + " (" + f.length() + " bytes)");
+            }
+            pw.println();
+            t.printStackTrace(pw);
+            pw.flush();
+            File log = ModelManager.root().getParentFile().toPath().resolve("vosk-error.log").toFile();
+            log.getParentFile().mkdirs();
+            Files.writeString(log.toPath(), sw.toString());
+        } catch (Throwable ignored) {
+            // logging must never crash the game
         }
     }
 
