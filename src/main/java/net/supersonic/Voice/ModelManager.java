@@ -184,10 +184,21 @@ public final class ModelManager {
 
     // ------------------------------------------------------------- natives
 
+    /**
+     * Where the native libraries go. On Android launchers the game folder is usually on shared storage,
+     * which cannot load native code, so the app's private cache folder (java.io.tmpdir) is used there.
+     */
+    public static File nativesDir() {
+        if (VoiceManager.isAndroidLike()) {
+            return new File(System.getProperty("java.io.tmpdir", "."), "supersonic-natives");
+        }
+        return new File(root(), "natives");
+    }
+
     /** Makes the Vosk native library loadable. Safe to call many times. */
     public static synchronized void prepareNatives() throws IOException {
         if (nativesReady) return;
-        File dir = new File(root(), "natives");
+        File dir = nativesDir();
         dir.mkdirs();
         if (VoiceManager.isAndroidLike()) {
             androidNatives(dir);
@@ -222,34 +233,51 @@ public final class ModelManager {
         if (dll.exists()) Files.copy(dll.toPath(), new File(dir, "vosk.dll").toPath(), StandardCopyOption.REPLACE_EXISTING);
     }
 
-    /** Android: take libvosk.so for this phone's CPU from the official vosk-android package on Maven Central. */
-    private static void androidNatives(File dir) throws IOException {
+    private static String androidAbi() {
         String arch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT);
-        String abi = arch.contains("aarch64") || arch.contains("arm64") ? "arm64-v8a"
+        return arch.contains("aarch64") || arch.contains("arm64") ? "arm64-v8a"
                 : arch.contains("arm") ? "armeabi-v7a"
                 : arch.contains("64") ? "x86_64" : "x86";
-        File lib = new File(dir, "libvosk.so");
-        if (!lib.exists()) {
-            HttpURLConnection c = (HttpURLConnection) URI.create(ANDROID_AAR).toURL().openConnection();
-            c.setConnectTimeout(15000);
-            c.setReadTimeout(30000);
-            c.setInstanceFollowRedirects(true);
-            if (c.getResponseCode() != 200) throw new IOException("HTTP " + c.getResponseCode() + " for vosk-android");
-            String wanted = "jni/" + abi + "/";
-            boolean any = false;
-            try (ZipInputStream zin = new ZipInputStream(new BufferedInputStream(c.getInputStream()))) {
-                ZipEntry e;
-                while ((e = zin.getNextEntry()) != null) {
-                    String n = e.getName();
-                    if (e.isDirectory() || !n.startsWith(wanted) || !n.endsWith(".so")) continue;
-                    String fileName = n.substring(wanted.length());
-                    if (fileName.contains("/")) continue;
-                    Files.copy(zin, new File(dir, fileName).toPath(), StandardCopyOption.REPLACE_EXISTING);
-                    any = true;
-                }
-            }
-            if (!any || !lib.exists()) throw new IOException("libvosk.so for " + abi + " not found in vosk-android");
+    }
+
+    /** Version of the JNA library that Minecraft itself uses (read at runtime). */
+    private static String jnaVersion() {
+        try {
+            Object v = Class.forName("com.sun.jna.Native").getField("VERSION").get(null);
+            if (v != null) return v.toString();
+        } catch (Throwable ignored) {
+            // fall through
         }
+        return "5.14.0";
+    }
+
+    /**
+     * Android: the CPU-specific libraries come from the official packages on Maven Central.
+     *  - libvosk.so          from vosk-android
+     *  - libjnidispatch.so   from the JNA Android package (Android launchers run a Linux-style Java, so JNA
+     *                        would otherwise pick a library that cannot load on Android)
+     */
+    private static void androidNatives(File dir) throws IOException {
+        String abi = androidAbi();
+
+        File vosk = new File(dir, "libvosk.so");
+        if (!vosk.exists() || vosk.length() == 0L) {
+            VoiceManager.status = "Downloading speech library...";
+            extractAar(ANDROID_AAR, "jni/" + abi + "/", dir);
+            if (!vosk.exists()) throw new IOException("libvosk.so for " + abi + " not found in vosk-android");
+        }
+
+        File jna = new File(dir, "libjnidispatch.so");
+        if (!jna.exists() || jna.length() == 0L) {
+            String v = jnaVersion();
+            VoiceManager.status = "Downloading JNA library...";
+            extractAar("https://repo1.maven.org/maven2/net/java/dev/jna/jna/" + v + "/jna-" + v + ".aar",
+                    "jni/" + abi + "/", dir);
+            if (!jna.exists()) throw new IOException("libjnidispatch.so for " + abi + " not found in jna " + v);
+        }
+        // Must be set before JNA starts; harmless if JNA was already loaded.
+        System.setProperty("jna.boot.library.path", dir.getAbsolutePath());
+
         File cxx = new File(dir, "libc++_shared.so");
         if (cxx.exists()) {
             try {
@@ -258,5 +286,31 @@ public final class ModelManager {
                 // may already be loaded by the launcher
             }
         }
+    }
+
+    /** Downloads an .aar and copies every .so under the given folder into dir. */
+    private static void extractAar(String url, String wantedPrefix, File dir) throws IOException {
+        HttpURLConnection c = (HttpURLConnection) URI.create(url).toURL().openConnection();
+        c.setConnectTimeout(15000);
+        c.setReadTimeout(30000);
+        c.setInstanceFollowRedirects(true);
+        int code = c.getResponseCode();
+        if (code != 200) throw new IOException("HTTP " + code + " for " + url.substring(url.lastIndexOf('/') + 1));
+        boolean any = false;
+        try (ZipInputStream zin = new ZipInputStream(new BufferedInputStream(c.getInputStream()))) {
+            ZipEntry e;
+            while ((e = zin.getNextEntry()) != null) {
+                String n = e.getName();
+                if (e.isDirectory() || !n.startsWith(wantedPrefix) || !n.endsWith(".so")) continue;
+                String fileName = n.substring(wantedPrefix.length());
+                if (fileName.contains("/")) continue;
+                File out = new File(dir, fileName);
+                Files.copy(zin, out.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                out.setReadable(true, false);
+                out.setExecutable(true, false);
+                any = true;
+            }
+        }
+        if (!any) throw new IOException("No " + wantedPrefix + " libraries in " + url.substring(url.lastIndexOf('/') + 1));
     }
 }
