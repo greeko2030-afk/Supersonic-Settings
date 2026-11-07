@@ -18,6 +18,8 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -48,6 +50,8 @@ public final class ModelManager {
     private static volatile String dlStatus = "Not downloaded";
     private static volatile boolean downloading = false;
     private static boolean nativesReady = false;
+    private static File androidDirCache = null;
+    private static volatile String jnaNote = "";
 
     private ModelManager() {
     }
@@ -189,10 +193,68 @@ public final class ModelManager {
      * which cannot load native code, so the app's private cache folder (java.io.tmpdir) is used there.
      */
     public static File nativesDir() {
-        if (VoiceManager.isAndroidLike()) {
-            return new File(System.getProperty("java.io.tmpdir", "."), "supersonic-natives");
-        }
+        if (VoiceManager.isAndroidLike()) return androidDir();
         return new File(root(), "natives");
+    }
+
+    /** What happened when the JNA library was loaded (shown together with errors). */
+    public static String jnaNote() {
+        return jnaNote;
+    }
+
+    private static boolean isExternal(File f) {
+        String p = f.getAbsolutePath();
+        return p.startsWith("/storage/") || p.startsWith("/sdcard") || p.startsWith("/mnt/");
+    }
+
+    /** Finds the Android app package (for example net.kdt.pojavlaunch) from the paths the launcher gives Java. */
+    private static String detectPackage() {
+        List<String> sources = new ArrayList<>();
+        for (String key : new String[]{"user.home", "user.dir", "java.io.tmpdir", "java.home"}) {
+            sources.add(System.getProperty(key, ""));
+        }
+        for (String key : new String[]{"POJAV_NATIVEDIR", "TMPDIR", "HOME", "POJAV_HOME", "LD_LIBRARY_PATH"}) {
+            String v = System.getenv(key);
+            sources.add(v == null ? "" : v);
+        }
+        Pattern[] patterns = {
+                Pattern.compile("/Android/data/([A-Za-z0-9_.]+)/"),
+                Pattern.compile("/data/(?:user/\\d+|data)/([A-Za-z0-9_.]+)/"),
+                Pattern.compile("/data/app/[^/]+/([A-Za-z0-9_.]+)-[^/]+/")
+        };
+        for (String src : sources) {
+            for (Pattern p : patterns) {
+                Matcher m = p.matcher(src);
+                if (m.find()) return m.group(1);
+            }
+        }
+        return null;
+    }
+
+    /** A writable folder inside the app's private storage (shared storage cannot load native code). */
+    private static synchronized File androidDir() {
+        if (androidDirCache != null) return androidDirCache;
+        List<File> candidates = new ArrayList<>();
+        String pkg = detectPackage();
+        if (pkg != null) {
+            candidates.add(new File("/data/user/0/" + pkg + "/files/supersonic-natives"));
+            candidates.add(new File("/data/data/" + pkg + "/files/supersonic-natives"));
+            candidates.add(new File("/data/user/0/" + pkg + "/cache/supersonic-natives"));
+        }
+        String tmp = System.getProperty("java.io.tmpdir");
+        if (tmp != null) candidates.add(new File(tmp, "supersonic-natives"));
+        String envTmp = System.getenv("TMPDIR");
+        if (envTmp != null) candidates.add(new File(envTmp, "supersonic-natives"));
+
+        for (File c : candidates) {
+            if (isExternal(c)) continue;
+            if ((c.isDirectory() || c.mkdirs()) && c.canWrite()) {
+                androidDirCache = c;
+                return c;
+            }
+        }
+        androidDirCache = new File(System.getProperty("java.io.tmpdir", "."), "supersonic-natives");
+        return androidDirCache;
     }
 
     /** Makes the Vosk native library loadable. Safe to call many times. */
@@ -277,6 +339,13 @@ public final class ModelManager {
         }
         // Must be set before JNA starts; harmless if JNA was already loaded.
         System.setProperty("jna.boot.library.path", dir.getAbsolutePath());
+        System.setProperty("jna.tmpdir", dir.getAbsolutePath());
+        try {
+            System.load(jna.getAbsolutePath());
+            jnaNote = "JNA native loaded from " + dir;
+        } catch (Throwable t) {
+            jnaNote = "JNA native load failed: " + (t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage());
+        }
 
         File cxx = new File(dir, "libc++_shared.so");
         if (cxx.exists()) {

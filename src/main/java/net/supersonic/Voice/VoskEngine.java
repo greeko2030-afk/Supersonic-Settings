@@ -103,7 +103,9 @@ final class VoskEngine {
             nativeReady = true;
             return null;
         } catch (Throwable t) {
-            initFailure = describe(t);
+            String note = ModelManager.jnaNote();
+            initFailure = describe(t) + (note.isEmpty() ? "" : " | " + note);
+            if (initFailure.length() > 300) initFailure = initFailure.substring(0, 300);
             writeLog(t);
             SupersonicClient.LOGGER.warn("Vosk native library failed", t);
             return initFailure;
@@ -129,6 +131,9 @@ final class VoskEngine {
             pw.println("java.version=" + System.getProperty("java.version") + "  vm=" + System.getProperty("java.vm.name"));
             pw.println("android-like=" + VoiceManager.isAndroidLike());
             pw.println("natives dir=" + ModelManager.nativesDir());
+            pw.println("jna note=" + ModelManager.jnaNote());
+            pw.println("jna.tmpdir=" + System.getProperty("jna.tmpdir"));
+            pw.println("user.home=" + System.getProperty("user.home") + "  java.io.tmpdir=" + System.getProperty("java.io.tmpdir"));
             pw.println("jna.library.path=" + System.getProperty("jna.library.path"));
             pw.println("jna.boot.library.path=" + System.getProperty("jna.boot.library.path"));
             File nd = ModelManager.nativesDir();
