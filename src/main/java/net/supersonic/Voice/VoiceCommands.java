@@ -8,32 +8,11 @@ import net.supersonic.SupersonicConfig;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.regex.Pattern;
 
-/** Decides whether a transcript is sent as chat or run as a server command. */
+/** Decides whether a transcript is sent as chat or run as server command(s). */
 public final class VoiceCommands {
     private VoiceCommands() {
     }
-
-    /** Only unambiguous command shapes are auto-detected, so normal chat is never turned into a command by accident. */
-    private static final List<Pattern> AUTO = List.of(
-            Pattern.compile("^gamemode (survival|creative|adventure|spectator)( .+)?$"),
-            Pattern.compile("^difficulty (peaceful|easy|normal|hard)$"),
-            Pattern.compile("^time (set|add|query) .+$"),
-            Pattern.compile("^weather (clear|rain|thunder)( \\d+)?$"),
-            Pattern.compile("^(tp|teleport) .+$"),
-            Pattern.compile("^give .+$"),
-            Pattern.compile("^summon .+$"),
-            Pattern.compile("^(setblock|fill) .+$"),
-            Pattern.compile("^gamerule \\w+( \\w+)?$"),
-            Pattern.compile("^effect (give|clear) .+$"),
-            Pattern.compile("^enchant .+$"),
-            Pattern.compile("^(xp|experience) (add|set|query) .+$"),
-            Pattern.compile("^kill @.+$"),
-            Pattern.compile("^(setworldspawn|spawnpoint)( .+)?$"),
-            Pattern.compile("^locate .+$"),
-            Pattern.compile("^seed$")
-    );
 
     /** Call on the main client thread. */
     public static void handle(String raw) {
@@ -51,24 +30,29 @@ public final class VoiceCommands {
 
         VoiceManager.setHeard(text);
 
-        String command = null;
+        List<String> commands = null;
         boolean canRunCommands = mc.isInSingleplayer() || player.hasPermissionLevel(2);
         if (cfg.voiceAutoCommands && canRunCommands) {
-            command = detectCommand(text, cfg);
+            commands = detectCommands(text, cfg);
         }
 
-        if (command != null && !command.isEmpty()) {
-            net.sendChatCommand(command);
+        if (commands != null && !commands.isEmpty()) {
+            int sent = 0;
+            for (String c : commands) {
+                if (sent >= 10 || c.isEmpty()) break;
+                net.sendChatCommand(c);
+                sent++;
+            }
+            String shown = commands.get(0) + (commands.size() > 1 ? "  (x" + commands.size() + ")" : "");
+            VoiceManager.notifyPlayer("§7Command: /" + shown);
         } else {
             if (text.length() > 256) text = text.substring(0, 256);
             net.sendChatMessage(text);
         }
     }
 
-    private static String detectCommand(String text, SupersonicConfig cfg) {
-        String lower = text.toLowerCase(Locale.ROOT)
-                .replaceAll("[.!?,।]+$", "")
-                .trim();
+    private static List<String> detectCommands(String text, SupersonicConfig cfg) {
+        String lower = text.toLowerCase(Locale.ROOT).replaceAll("[.!?,।]+$", "").trim();
 
         // Explicit: "/time set day", "slash time set day", "command time set day"
         String rest = null;
@@ -82,18 +66,19 @@ public final class VoiceCommands {
                 rest = lower.substring(word.length() + 1).trim();
             }
         }
-        if (rest != null) return fixSelectors(rest);
 
-        // Automatic: unambiguous command shapes
-        String fixed = fixSelectors(lower);
-        for (Pattern p : AUTO) {
-            if (p.matcher(fixed).matches()) return fixed;
+        if (rest != null) {
+            List<String> parsed = SpokenCommands.parse(rest);
+            if (parsed != null) return parsed;
+            // The player said "command ..." but it is not a known phrase: run it as spoken.
+            return List.of(rest.replaceAll("\\bat (?:s|self|me)\\b", "@s")
+                    .replaceAll("\\bat (?:a|all|everyone)\\b", "@a")
+                    .replaceAll("\\bat (?:p|nearest)\\b", "@p")
+                    .replaceAll("\\bat (?:e|entities)\\b", "@e")
+                    .replaceAll("\\bat (?:r|random)\\b", "@r"));
         }
-        return null;
-    }
 
-    /** "at s" -> "@s", "at a" -> "@a" ... because speech has no @ sign. */
-    private static String fixSelectors(String s) {
-        return s.replaceAll("\\bat ([separ])\\b", "@$1");
+        // Automatic: only sentences that match a known command phrase
+        return SpokenCommands.parse(lower);
     }
 }
