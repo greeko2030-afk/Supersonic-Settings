@@ -18,6 +18,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -263,6 +264,10 @@ public final class ModelManager {
         File dir = nativesDir();
         dir.mkdirs();
         if (VoiceManager.isAndroidLike()) {
+            // These must be set before anything touches JNA, otherwise JNA starts with its defaults
+            // (and tries to unpack into shared storage, which cannot run native code).
+            System.setProperty("jna.boot.library.path", dir.getAbsolutePath());
+            System.setProperty("jna.tmpdir", dir.getAbsolutePath());
             androidNatives(dir);
         } else {
             bundledNatives(dir);
@@ -302,15 +307,44 @@ public final class ModelManager {
                 : arch.contains("64") ? "x86_64" : "x86";
     }
 
-    /** Version of the JNA library that Minecraft itself uses (read at runtime). */
+    /** Version of the JNA library that Minecraft uses. Read from jar metadata so that JNA is NOT started. */
     private static String jnaVersion() {
+        ClassLoader cl = ModelManager.class.getClassLoader();
+        try (InputStream in = cl.getResourceAsStream("META-INF/maven/net.java.dev.jna/jna/pom.properties")) {
+            if (in != null) {
+                Properties props = new Properties();
+                props.load(in);
+                String v = props.getProperty("version");
+                if (v != null && !v.isEmpty()) return v;
+            }
+        } catch (Throwable ignored) {
+            // try the next way
+        }
         try {
-            Object v = Class.forName("com.sun.jna.Native").getField("VERSION").get(null);
-            if (v != null) return v.toString();
+            java.net.URL u = cl.getResource("com/sun/jna/Native.class");
+            if (u != null) {
+                Matcher m = Pattern.compile("jna-(\\d+\\.\\d+\\.\\d+)").matcher(u.toString());
+                if (m.find()) return m.group(1);
+            }
         } catch (Throwable ignored) {
             // fall through
         }
         return "5.14.0";
+    }
+
+    /** Only used after a failure: tries to load the JNA native by hand so the real reason can be shown. */
+    public static void diagnoseJna() {
+        try {
+            File jna = new File(nativesDir(), "libjnidispatch.so");
+            if (!jna.exists()) {
+                jnaNote = "libjnidispatch.so was not downloaded";
+                return;
+            }
+            System.load(jna.getAbsolutePath());
+            jnaNote = "JNA native loads fine from " + nativesDir();
+        } catch (Throwable t) {
+            jnaNote = "JNA native load failed: " + (t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage());
+        }
     }
 
     /**
@@ -336,15 +370,6 @@ public final class ModelManager {
             extractAar("https://repo1.maven.org/maven2/net/java/dev/jna/jna/" + v + "/jna-" + v + ".aar",
                     "jni/" + abi + "/", dir);
             if (!jna.exists()) throw new IOException("libjnidispatch.so for " + abi + " not found in jna " + v);
-        }
-        // Must be set before JNA starts; harmless if JNA was already loaded.
-        System.setProperty("jna.boot.library.path", dir.getAbsolutePath());
-        System.setProperty("jna.tmpdir", dir.getAbsolutePath());
-        try {
-            System.load(jna.getAbsolutePath());
-            jnaNote = "JNA native loaded from " + dir;
-        } catch (Throwable t) {
-            jnaNote = "JNA native load failed: " + (t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage());
         }
 
         File cxx = new File(dir, "libc++_shared.so");
