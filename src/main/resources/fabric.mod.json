@@ -4,14 +4,23 @@
   "version": "${version}",
   "name": "Supersonic Settings",
   "description": "Optimize. Accelerate. Dominate. Settings GUI (Ctrl + Right Shift), custom HUD and Supersonic Engine F3 info.",
-  "authors": ["greeko20"],
+  "authors": [
+    "GreekoASC"
+  ],
   "license": "MIT",
   "icon": "assets/supersonicsettings/icon.png",
   "environment": "client",
   "entrypoints": {
-    "client": ["net.supersonic.SupersonicClient"]
+    "client": [
+      "net.supersonic.SupersonicClient"
+    ],
+    "preLaunch": [
+      "net.supersonic.voice.JnaPreLaunch"
+    ]
   },
-  "mixins": ["supersonicsettings.mixins.json"],
+  "mixins": [
+    "supersonicsettings.mixins.json"
+  ],
   "depends": {
     "fabricloader": ">=0.16.0",
     "fabric-api": "*",
