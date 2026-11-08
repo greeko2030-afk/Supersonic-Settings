@@ -27,6 +27,13 @@ public final class MicCapture implements AutoCloseable {
     private static long sharedDevice = 0L;
     private static boolean hookAdded = false;
 
+    /** Sample rates to try when opening the OpenAL capture device (16 kHz first, the rest are resampled to 16 kHz). */
+    private static final int[] RATES = {16000, 48000, 44100, 22050, 32000, 8000};
+    /** Rate the shared capture device was really opened with. */
+    private static int sharedRate = 16000;
+    /** Why opening the capture device failed (shown in the error message and in vosk-error.log). */
+    private static volatile String lastOpenInfo = "";
+
     private interface Source {
         int read(byte[] buf) throws Exception;
 
@@ -86,7 +93,33 @@ public final class MicCapture implements AutoCloseable {
             sharedDevice = 0L;
         }
         if (sharedDevice == 0L) {
-            sharedDevice = ALC11.alcCaptureOpenDevice((ByteBuffer) null, 16000, AL10.AL_FORMAT_MONO16, 16000);
+            String defName = null;
+            try {
+                defName = ALC10.alcGetString(0L, ALC11.ALC_CAPTURE_DEFAULT_DEVICE_SPECIFIER);
+            } catch (Throwable ignored) {
+                // device enumeration is optional
+            }
+            StringBuilder info = new StringBuilder();
+            for (int rate : RATES) {
+                long d = ALC11.alcCaptureOpenDevice((ByteBuffer) null, rate, AL10.AL_FORMAT_MONO16, rate);
+                if (d == 0L && defName != null && !defName.isEmpty()) {
+                    d = ALC11.alcCaptureOpenDevice(defName, rate, AL10.AL_FORMAT_MONO16, rate);
+                }
+                if (d != 0L) {
+                    sharedDevice = d;
+                    sharedRate = rate;
+                    break;
+                }
+                int err = -1;
+                try {
+                    err = ALC10.alcGetError(0L);
+                } catch (Throwable ignored) {
+                    // keep -1
+                }
+                info.append(rate).append("Hz:alcError=0x").append(Integer.toHexString(err)).append(' ');
+            }
+            lastOpenInfo = "default capture device=" + (defName == null || defName.isEmpty() ? "none" : defName)
+                    + ", tried " + info.toString().trim();
             if (sharedDevice != 0L && !hookAdded) {
                 hookAdded = true;
                 Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -107,8 +140,13 @@ public final class MicCapture implements AutoCloseable {
 
     private static final class OpenAlSource implements Source {
         private final long device;
+        private final int rate;
         private long lastData;
         private boolean restarted = false;
+        // resampler state (only used when the device could not be opened at 16 kHz)
+        private double acc = 0.0;
+        private int cnt = 0;
+        private double outPhase = 0.0;
 
         OpenAlSource() throws Exception {
             long d = 0L;
@@ -116,8 +154,12 @@ public final class MicCapture implements AutoCloseable {
                 d = device(attempt >= 2); // after two failures throw the old handle away and open a fresh one
                 if (d == 0L) Thread.sleep(250L);
             }
-            if (d == 0L) throw new IllegalStateException("capture device unavailable");
+            if (d == 0L) {
+                throw new IllegalStateException("capture device unavailable [" + lastOpenInfo
+                        + "] - check that the launcher app has the Android Microphone permission");
+            }
             device = d;
+            rate = sharedRate;
             ALC11.alcCaptureStart(device);
 
             // throw away anything recorded before this session
@@ -149,11 +191,38 @@ public final class MicCapture implements AutoCloseable {
                 return 0;
             }
             lastData = now;
-            int n = Math.min(available, out.length / 2);
+
+            if (rate == 16000) {
+                int n = Math.min(available, out.length / 2);
+                ByteBuffer bb = BufferUtils.createByteBuffer(n * 2).order(ByteOrder.LITTLE_ENDIAN);
+                ALC11.alcCaptureSamples(device, bb, n);
+                bb.get(out, 0, n * 2);
+                return n * 2;
+            }
+
+            // The device runs at another rate: average + resample down to 16 kHz for Vosk
+            int maxOut = out.length / 2;
+            int maxIn = Math.max(1, (int) Math.floor(maxOut * (double) rate / 16000.0));
+            int n = Math.min(available, maxIn);
             ByteBuffer bb = BufferUtils.createByteBuffer(n * 2).order(ByteOrder.LITTLE_ENDIAN);
             ALC11.alcCaptureSamples(device, bb, n);
-            bb.get(out, 0, n * 2);
-            return n * 2;
+            double step = 16000.0 / rate;
+            int o = 0;
+            for (int i = 0; i < n; i++) {
+                acc += bb.getShort(i * 2);
+                cnt++;
+                outPhase += step;
+                if (outPhase >= 1.0 && o < maxOut) {
+                    outPhase -= 1.0;
+                    short v = (short) (acc / cnt);
+                    out[2 * o] = (byte) (v & 0xFF);
+                    out[2 * o + 1] = (byte) ((v >> 8) & 0xFF);
+                    o++;
+                    acc = 0.0;
+                    cnt = 0;
+                }
+            }
+            return o * 2;
         }
 
         @Override
