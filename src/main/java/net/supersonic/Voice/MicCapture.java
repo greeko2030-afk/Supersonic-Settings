@@ -16,10 +16,16 @@ import java.nio.ByteOrder;
  * Microphone input, 16 kHz / 16-bit / mono / little endian.
  * Tries OpenAL first (the audio library Minecraft already ships, also used on Android launchers),
  * then falls back to Java Sound.
+ *
+ * The OpenAL capture device is opened once and kept for the whole game session: closing and re-opening it
+ * is unreliable on Android. Turning the microphone off only stops recording.
  */
 public final class MicCapture implements AutoCloseable {
     private static final AudioFormat FORMAT = new AudioFormat(16000f, 16, 1, true, false);
     public static volatile String lastSource = "-";
+
+    private static long sharedDevice = 0L;
+    private static boolean hookAdded = false;
 
     private interface Source {
         int read(byte[] buf) throws Exception;
@@ -68,22 +74,81 @@ public final class MicCapture implements AutoCloseable {
 
     // ------------------------------------------------------------- OpenAL
 
+    /** Returns the shared capture device, opening it if needed (or re-opening it when forced). */
+    private static synchronized long device(boolean forceReopen) {
+        if (forceReopen && sharedDevice != 0L) {
+            try {
+                ALC11.alcCaptureStop(sharedDevice);
+                ALC11.alcCaptureCloseDevice(sharedDevice);
+            } catch (Throwable ignored) {
+                // the old handle may already be invalid
+            }
+            sharedDevice = 0L;
+        }
+        if (sharedDevice == 0L) {
+            sharedDevice = ALC11.alcCaptureOpenDevice((ByteBuffer) null, 16000, AL10.AL_FORMAT_MONO16, 16000);
+            if (sharedDevice != 0L && !hookAdded) {
+                hookAdded = true;
+                Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                    long d = sharedDevice;
+                    if (d != 0L) {
+                        try {
+                            ALC11.alcCaptureStop(d);
+                            ALC11.alcCaptureCloseDevice(d);
+                        } catch (Throwable ignored) {
+                            // shutting down anyway
+                        }
+                    }
+                }));
+            }
+        }
+        return sharedDevice;
+    }
+
     private static final class OpenAlSource implements Source {
         private final long device;
+        private long lastData;
+        private boolean restarted = false;
 
-        OpenAlSource() {
-            device = ALC11.alcCaptureOpenDevice((ByteBuffer) null, 16000, AL10.AL_FORMAT_MONO16, 16000);
-            if (device == 0L) throw new IllegalStateException("capture device unavailable");
+        OpenAlSource() throws Exception {
+            long d = 0L;
+            for (int attempt = 0; attempt < 8 && d == 0L; attempt++) {
+                d = device(attempt >= 2); // after two failures throw the old handle away and open a fresh one
+                if (d == 0L) Thread.sleep(250L);
+            }
+            if (d == 0L) throw new IllegalStateException("capture device unavailable");
+            device = d;
             ALC11.alcCaptureStart(device);
+
+            // throw away anything recorded before this session
+            int pending = ALC10.alcGetInteger(device, ALC11.ALC_CAPTURE_SAMPLES);
+            if (pending > 0) {
+                ByteBuffer junk = BufferUtils.createByteBuffer(pending * 2);
+                ALC11.alcCaptureSamples(device, junk, pending);
+            }
+            lastData = System.currentTimeMillis();
         }
 
         @Override
         public int read(byte[] out) throws Exception {
             int available = ALC10.alcGetInteger(device, ALC11.ALC_CAPTURE_SAMPLES);
+            long now = System.currentTimeMillis();
             if (available <= 0) {
+                if (now - lastData > 4000L) {
+                    if (!restarted) {
+                        restarted = true;
+                        ALC11.alcCaptureStop(device);
+                        ALC11.alcCaptureStart(device);
+                        lastData = now;
+                    } else {
+                        throw new IllegalStateException("no audio from the microphone "
+                                + "(is microphone permission allowed for your launcher?)");
+                    }
+                }
                 Thread.sleep(10L);
                 return 0;
             }
+            lastData = now;
             int n = Math.min(available, out.length / 2);
             ByteBuffer bb = BufferUtils.createByteBuffer(n * 2).order(ByteOrder.LITTLE_ENDIAN);
             ALC11.alcCaptureSamples(device, bb, n);
@@ -93,11 +158,11 @@ public final class MicCapture implements AutoCloseable {
 
         @Override
         public void close() {
+            // Only stop recording. The device stays open for the next session.
             try {
                 ALC11.alcCaptureStop(device);
-                ALC11.alcCaptureCloseDevice(device);
             } catch (Throwable ignored) {
-                // already closed
+                // already stopped
             }
         }
 
