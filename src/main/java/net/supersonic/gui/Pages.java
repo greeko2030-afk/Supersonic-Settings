@@ -278,6 +278,8 @@ public final class Pages {
         r.add(new Rows.Cycle("Speech Model", "Language model. Put your own model folder in config/supersonic/vosk.",
                 () -> c.voiceVoskModel, v -> c.voiceVoskModel = (String) v,
                 ModelManager::choices, v -> String.valueOf(v)));
+        r.add(new Rows.Toggle("Auto Download", "Download the speech files automatically when you join a world.",
+                () -> c.voiceAutoDownload, v -> c.voiceAutoDownload = v));
         r.add(new Rows.Button("Download Speech Files", "Downloads the selected model (about 40 MB). Needs internet once.", "Download",
                 () -> ModelManager.downloadAsync(c.voiceVoskModel)));
         r.add(new Rows.Info("Download Status", "Progress of the download.", ModelManager::status, Draw.CYAN, null));
