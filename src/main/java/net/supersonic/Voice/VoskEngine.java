@@ -118,6 +118,7 @@ final class VoskEngine {
             nativeReady = true;
             return null;
         } catch (Throwable t) {
+            ModelManager.diagnoseJna();
             String note = ModelManager.jnaNote();
             initFailure = describe(t) + (note.isEmpty() ? "" : " | " + note);
             if (initFailure.length() > 300) initFailure = initFailure.substring(0, 300);
