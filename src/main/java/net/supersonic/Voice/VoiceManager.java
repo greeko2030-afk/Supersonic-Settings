@@ -94,6 +94,11 @@ public final class VoiceManager {
         return e;
     }
 
+    /** True when the offline Vosk engine is the one that will be used (needs speech files). */
+    public static boolean usesVosk() {
+        return effectiveEngine() == SupersonicConfig.VoiceEngine.VOSK;
+    }
+
     public static String engineName() {
         SupersonicConfig.VoiceEngine e = effectiveEngine();
         if (e == SupersonicConfig.VoiceEngine.VOSK) return "Offline Model (Vosk)";

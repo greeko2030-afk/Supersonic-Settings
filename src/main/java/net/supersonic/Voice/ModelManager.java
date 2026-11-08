@@ -2,6 +2,8 @@ package net.supersonic.voice;
 
 import com.sun.jna.Platform;
 import net.fabricmc.loader.api.FabricLoader;
+import net.supersonic.SupersonicClient;
+import net.supersonic.SupersonicConfig;
 
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -19,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
+import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -50,6 +53,7 @@ public final class ModelManager {
 
     private static volatile String dlStatus = "Not downloaded";
     private static volatile boolean downloading = false;
+    private static int autoAttempts = 0;
     private static boolean nativesReady = false;
     private static volatile String jnaNote = "";
 
@@ -110,36 +114,82 @@ public final class ModelManager {
     // ------------------------------------------------------------ download
 
     public static void downloadAsync(String choice) {
+        downloadAsync(choice, null);
+    }
+
+    /** Downloads in the background. When finished, done.accept(success, errorMessage) is called (done may be null). */
+    public static void downloadAsync(String choice, BiConsumer<Boolean, String> done) {
         if (downloading) return;
         downloading = true;
         dlStatus = "Starting...";
         Thread t = new Thread(() -> {
+            boolean ok = false;
+            String err = "";
             try {
                 if (VoiceManager.isAndroidLike()) {
                     dlStatus = "Getting the Android speech library...";
                     prepareNatives();
                 }
                 String folder = folderFor(choice);
-                boolean known = false;
-                for (String[] m : MODELS) {
-                    if (m[1].equals(folder)) known = true;
-                }
-                if (!known) {
-                    dlStatus = installed(new File(root(), folder)) ? "Custom model ready" : "Custom model folder is empty";
+                if (!isKnownFolder(folder)) {
+                    ok = installed(new File(root(), folder));
+                    dlStatus = ok ? "Custom model ready" : "Custom model folder is empty";
+                    if (!ok) err = dlStatus;
                     return;
                 }
                 File dir = new File(root(), folder);
                 if (!installed(dir)) downloadModel(folder);
                 dlStatus = "Ready";
+                ok = true;
             } catch (Throwable e) {
                 String m = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-                dlStatus = "Error: " + (m.length() > 80 ? m.substring(0, 80) : m);
+                err = m.length() > 80 ? m.substring(0, 80) : m;
+                dlStatus = "Error: " + err;
             } finally {
                 downloading = false;
+                if (done != null) {
+                    try {
+                        done.accept(ok, err);
+                    } catch (Throwable ignored) {
+                        // a broken callback must never break the download thread
+                    }
+                }
             }
         }, "Supersonic-Voice-Download");
         t.setDaemon(true);
         t.start();
+    }
+
+    private static boolean isKnownFolder(String folder) {
+        for (String[] m : MODELS) {
+            if (m[1].equals(folder)) return true;
+        }
+        return false;
+    }
+
+    /** True when the selected model (or, on Android, the native libraries) is missing and can be downloaded. */
+    public static boolean needsDownload(String choice) {
+        boolean modelMissing = !isInstalled(choice) && isKnownFolder(folderFor(choice));
+        boolean nativesMissing = false;
+        if (VoiceManager.isAndroidLike()) {
+            File dir = nativesDir();
+            nativesMissing = !(new File(dir, "libvosk.so").isFile() && new File(dir, "libjnidispatch.so").isFile());
+        }
+        return modelMissing || nativesMissing;
+    }
+
+    /** Automatic download: called when the player joins a world. Does nothing when everything is already there. */
+    public static void autoDownloadIfNeeded() {
+        SupersonicConfig cfg = SupersonicClient.CONFIG;
+        if (cfg == null || !cfg.voiceEnabled || !cfg.voiceAutoDownload) return;
+        if (!VoiceManager.usesVosk()) return;
+        String choice = cfg.voiceVoskModel;
+        if (downloading || autoAttempts >= 3 || !needsDownload(choice)) return;
+        autoAttempts++;
+        VoiceManager.notifyPlayer("Downloading the speech files in the background (about 40 MB)...");
+        downloadAsync(choice, (ok, err) -> VoiceManager.notifyPlayer(ok
+                ? "Speech files are ready. Press the voice hotkey (Left Shift + V) to use the microphone."
+                : "Speech download failed: " + err + ". You can retry in Supersonic Settings > Voice Chat."));
     }
 
     private static void downloadModel(String folder) throws IOException {
