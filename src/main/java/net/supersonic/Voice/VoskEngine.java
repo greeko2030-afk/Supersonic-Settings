@@ -24,7 +24,16 @@ final class VoskEngine {
     private VoskEngine() {
     }
 
+    private static final Object RUN_LOCK = new Object();
+
     static void run(int my) {
+        synchronized (RUN_LOCK) { // a new session waits until the previous one has released everything
+            if (my != VoiceManager.session || !VoiceManager.running) return; // cancelled while waiting
+            runLocked(my);
+        }
+    }
+
+    private static void runLocked(int my) {
         SupersonicConfig cfg = SupersonicClient.CONFIG;
         File dir = ModelManager.modelDir(cfg.voiceVoskModel);
         boolean failed = false;
@@ -52,12 +61,14 @@ final class VoskEngine {
             try (Model model = new Model(dir.getAbsolutePath());
                  Recognizer rec = new Recognizer(model, 16000f)) {
                 mic = MicCapture.open();
+                final MicCapture micRef = mic;
                 VoiceManager.status = "Listening";
                 VoiceManager.notifyPlayer("Microphone ON (" + cfg.voiceVoskModel + ", mic via " + mic.sourceName()
                         + "). Speak now. Left Shift + V to turn off.");
 
                 byte[] buf = new byte[640]; // 20 ms
                 long lastLoud = 0L;
+                try {
                 while (VoiceManager.running && my == VoiceManager.session) {
                     int n = mic.read(buf);
                     if (n <= 0) continue;
@@ -78,6 +89,10 @@ final class VoskEngine {
                     if (rec.acceptWaveForm(buf, n)) {
                         deliver(extract(rec.getResult()));
                     }
+                }
+                } finally {
+                    micRef.close(); // release the microphone first
+                    mic = null;
                 }
             }
         } catch (Throwable t) {
