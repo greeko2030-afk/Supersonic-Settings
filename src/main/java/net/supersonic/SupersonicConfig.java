@@ -71,6 +71,8 @@ public class SupersonicConfig {
     public boolean voiceAnimation = true;
     public VoiceEngine voiceEngine = VoiceEngine.AUTO;
     public String voiceVoskModel = "English (US)";
+    /** Download missing speech files automatically when the player joins a world. */
+    public boolean voiceAutoDownload = true;
 
     // Capture
     public boolean screenshotHideHud = true;

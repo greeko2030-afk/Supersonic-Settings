@@ -2,6 +2,7 @@ package net.supersonic;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.MinecraftClient;
@@ -12,6 +13,7 @@ import net.minecraft.entity.effect.StatusEffects;
 import net.supersonic.gui.CaptureTools;
 import net.supersonic.gui.SupersonicScreen;
 import net.supersonic.hud.HudRenderer;
+import net.supersonic.voice.ModelManager;
 import net.supersonic.voice.VoiceManager;
 import net.supersonic.voice.VoiceOverlay;
 import org.lwjgl.glfw.GLFW;
@@ -84,6 +86,9 @@ public class SupersonicClient implements ClientModInitializer {
             CaptureTools.tick(client);
             smartSprint(client);
         });
+
+        // Download missing speech files in the background as soon as the player joins a world
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> ModelManager.autoDownloadIfNeeded());
 
         HudRenderCallback.EVENT.register(HudRenderer::render);
         HudRenderCallback.EVENT.register(VoiceOverlay::render);
