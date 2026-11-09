@@ -188,7 +188,9 @@ public final class ModelManager {
         autoAttempts++;
         VoiceManager.notifyPlayer("Downloading the speech files in the background (about 40 MB)...");
         downloadAsync(choice, (ok, err) -> VoiceManager.notifyPlayer(ok
-                ? "Speech files are ready. Press the voice hotkey (Left Shift + V) to use the microphone."
+                ? (VoiceManager.isAndroidLike() && !JnaPreLaunch.jnaReadyAtStart
+                        ? "Speech files are ready. Restart the game once to finish the setup, then use Left Shift + V."
+                        : "Speech files are ready. Press the voice hotkey (Left Shift + V) to use the microphone.")
                 : "Speech download failed: " + err + ". You can retry in Supersonic Settings > Voice Chat."));
     }
 
