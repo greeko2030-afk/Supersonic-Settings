@@ -10,6 +10,7 @@ import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
 import net.supersonic.SupersonicClient;
 import net.supersonic.gui.Rows.Row;
+import net.supersonic.mods.ModsManager;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -24,6 +25,7 @@ public class SupersonicScreen extends Screen {
 
     public final List<ModContainer> mods = new ArrayList<>();
     public int selectedMod = 0;
+    public ModsPage modsPage;
     public final List<List<Row>> captureSubs = new ArrayList<>();
     public int captureSub = 0;
     private static final String[] SUB_NAMES = {"REPLAY", "RECORDING", "SCREENSHOT", "CLIPBOARD", "LIVE STREAM"};
@@ -168,6 +170,14 @@ public class SupersonicScreen extends Screen {
         updateTop();
         buttons.clear();
         TextRenderer tr = this.textRenderer;
+
+        if (tab == Tab.MODS && modsPage != null) {
+            modsPage.onVisible();
+            if (ModsManager.dirty) {
+                ModsManager.dirty = false;
+                modsPage.refresh();
+            }
+        }
 
         ctx.fill(0, 0, this.width, this.height, 0x55000000);
         Draw.round(ctx, px, py, pw, ph, Draw.BG);

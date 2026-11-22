@@ -9,7 +9,7 @@ public enum Tab {
     MULTIPLAYER("Multiplayer", "Enhance your multiplayer experience.", 5),
     VOICE("Voice Chat", "Speak to chat or run commands. Left Shift + V.", 9),
     CONTROLS("Controls", "Customize your keybinds and mouse settings.", 6),
-    MODS("Mods & Addons", "See your installed mods and open folders.", 7),
+    MODS("Mods & Addons", "Browse, install and switch your mods on or off.", 7),
     CAPTURE("Replay & Capture", "Record, review and share your best moments.", 8);
 
     public final String title;

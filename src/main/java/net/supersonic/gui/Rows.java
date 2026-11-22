@@ -421,6 +421,13 @@ public final class Rows {
         private final Consumer<String> set;
         private final boolean masked;
         private String original;
+        private Runnable onSubmit;
+
+        /** Runs when Enter is pressed while this box is focused. */
+        public TextInput onSubmit(Runnable r) {
+            this.onSubmit = r;
+            return this;
+        }
 
         public TextInput(String title, String desc, boolean masked, Supplier<String> get, Consumer<String> set) {
             super(title, desc);
@@ -483,7 +490,9 @@ public final class Rows {
                 return true;
             }
             if (keyCode == 257 || keyCode == 335 || keyCode == 256) { // enter / keypad enter / escape
+                TextInput f = FOCUS;
                 FOCUS = null;
+                if (keyCode != 256 && f.onSubmit != null) f.onSubmit.run();
                 return true;
             }
             if (keyCode == 86 && (mods & 2) != 0) { // Ctrl+V

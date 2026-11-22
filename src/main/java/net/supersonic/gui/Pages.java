@@ -238,20 +238,8 @@ public final class Pages {
     }
 
     private static List<Row> mods(SupersonicScreen screen) {
-        List<Row> r = new ArrayList<>();
-        r.add(new Rows.Header("LOADED MODS (" + screen.mods.size() + ")"));
-        for (int i = 0; i < screen.mods.size(); i++) {
-            final int idx = i;
-            ModContainer m = screen.mods.get(i);
-            String desc = m.getMetadata().getDescription();
-            if (desc == null) desc = "";
-            int nl = desc.indexOf('\n');
-            if (nl >= 0) desc = desc.substring(0, nl);
-            r.add(new Rows.ModRow(m.getMetadata().getName(), desc.trim(),
-                    m.getMetadata().getVersion().getFriendlyString(),
-                    () -> screen.selectedMod == idx, () -> screen.selectedMod = idx));
-        }
-        return r;
+        screen.modsPage = new ModsPage(screen);
+        return screen.modsPage.rows();
     }
 
     private static List<Row> voice(MinecraftClient mc) {
